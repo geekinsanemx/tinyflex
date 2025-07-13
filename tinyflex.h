@@ -85,14 +85,18 @@ static const uint8_t flex_cblock[]     = {0xAE,0xD8,0x45,0x12,0x7B};
 #define TF_INVALID_FLEXBUFFER 3
 
 /**
+ * @brief Calculates the bit parity of a given 32-bit word provided in @p x.
+ * @param x Word to be calculated the bit-parity.
+ * @return  Returns 0 if the word have an odd parity, 1 if even.
  *
+ * @note From 'Bit Twiddling Hacks', released into public domain.
  */
-static uint8_t even_parity(uint32_t x) {
-	uint8_t parity;
-	int i;
-	for (i = 0, parity = 0; i < 31; i++)
-		parity ^= (x >> i) & 1;
-	return parity;
+static uint8_t word_parity(uint32_t x) {
+	x ^= x >> 16;
+	x ^= x >> 8;
+	x ^= x >> 4;
+	x &= 0xf;
+	return (0x6996 >> x) & 1;
 }
 
 /**
@@ -149,7 +153,7 @@ static uint32_t encode_word(uint32_t dw)
 	/* Assemble final 31-bit word: data (21 bits) + ecc (10 bits). */
 	code31 = (data << 10) | ecc;
 	/* Compute even parity bit over the 31 bits. */
-	parity = even_parity(code31);
+	parity = word_parity(code31);
 
 	/* Return full 32-bit codeword. */
 	return (code31 << 1) | parity;
