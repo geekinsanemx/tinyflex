@@ -1,0 +1,4 @@
+*~
+*.o
+demos/send_ttgo
+demos/encode_file
