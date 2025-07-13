@@ -1,6 +1,6 @@
 /*
  * tinyflex: A minimal, dependency-free, single-header library, FLEX encoder.
- * by Davidson Francis (aka Theldus) - 2025.
+ * Written by Davidson Francis (aka Theldus) - 2025.
  *
  * This is free and unencumbered software released into the public domain.
  */
@@ -18,6 +18,9 @@ extern "C" {
 /*
  * All section notes makes reference to the standard:
  * 'FLEX-TD RADIO PAGING SYSTEM - ARIB STANDARD - RCR STD-43A'
+ *
+ * Link:
+ *   http://www.arib.or.jp/english/html/overview/doc/1-STD-43_A-E1.pdf
  */
 
 /* BCH generator polynomial: x^10 + x^9 + x^8 + x^6 + x^5 + x^3 + 1. */
@@ -119,7 +122,7 @@ static uint32_t rev32(uint32_t v) {
 /**
  * @brief Encodes a FLEX word: BCH(31,21) + even parity bit.
  * @param  dw  21-bit data to be encoded (in upper 21 bits of dw).
- * @return Returnss a 32-bit codeword: [21 data bits][10 BCH][1 parity]
+ * @return Returns a 32-bit codeword: [21 data bits][10 BCH][1 parity]
  *
  * @note BCH Generator Polynomial is described on Section 3.5.2.
  */
@@ -200,7 +203,7 @@ create_fiw(uint32_t cycle, uint32_t frame, uint32_t n, uint32_t r, uint32_t t)
 }
 
 /**
- * @brief Creates a FLEX Block Information Word.
+ * @brief Creates a FLEX Block Information Word 1.
  *
  * @param prio    Number of word representing priority addresses (0-15).
  * @param e_biw   End of BIW, more specifically, specifies when the Address
@@ -208,9 +211,9 @@ create_fiw(uint32_t cycle, uint32_t frame, uint32_t n, uint32_t r, uint32_t t)
  * @param s_vfield Specifies the offset of where the Vector Field starts (1-63)
  * @param carry   Two-bit flag that specifies if the info would be transmitted
  *                in subsequent frames: 0 no carry, 1-3 Carry on 1-3 Frames.
- * @param colapse Ranging from 0-7, specify when the pager should decode the
- *                frames: 0 all frames, 1-7: 2^n cycle: 2^1 = Decodes every 2nd
- *                frame, 2^2 = every 4th frame...
+ * @param collapse Ranging from 0-7, specify when the pager should decode the
+ *                 frames: 0 all frames, 1-7: 2^n cycle: 2^1 = Decodes every 2nd
+ *                 frame, 2^2 = every 4th frame...
  *
  * @return Returns a filled BIW properly encoded.
  *                                      
@@ -218,14 +221,14 @@ create_fiw(uint32_t cycle, uint32_t frame, uint32_t n, uint32_t r, uint32_t t)
  */
 static uint32_t
 create_biw1(uint32_t prio, uint32_t e_biw, uint32_t s_vfield, uint32_t carry,
-	uint32_t colapse)
+	uint32_t collapse)
 {
 	uint32_t dw;
 	dw  = (prio     & 0xF)  << 4;
 	dw |= (e_biw    & 0x3)  << 8;
 	dw |= (s_vfield & 0x3F) << 10;
 	dw |= (carry    & 0x3)  << 16;
-	dw |= (colapse  & 0x7)  << 18;
+	dw |= (collapse  & 0x7)  << 18;
 
 	dw = flex_checksum(dw);
 	return encode_word(rev32(dw));
@@ -272,7 +275,13 @@ static int is_shortaddr_valid(uint32_t cap_code)
 }
 
 /**
+ * @brief Creates a short address based on a given 7-digit cap code.
  *
+ * @param cap_code 7-digit cap code to be encoded.
+ *
+ * @return Returns a short address, ranging from 1 to 1933312 (inclusive).
+ *
+ * @note Refer to 'Appendix A: CAPCODE'.
  */
 static uint32_t create_short_address(uint32_t cap_code)
 {
@@ -325,7 +334,17 @@ static void interleave_block(uint32_t block_num, uint32_t *frame_words)
 }
 
 /**
+ * @brief Encodes a given ASCII message into the a proper alphanumeric FLEX
+ * message.
  *
+ * @param frame_words [in/out] Words list for a given frame.
+ * @param msg         [in]     ASCII message to be encoded.
+ * @param msg_start            Block number in which the message starts inside
+ *                             the frame.
+ * @param fwc_p       [in/out] Frame word counter: keeps track of how many words
+ *                             have been written until now.
+ *
+ * @note Message encoding described at: Reference Document A, Sec 3.8.8.3
  */
 static void
 create_alphanumeric_msg(uint32_t *frame_words, const char *msg,
@@ -408,7 +427,7 @@ create_alphanumeric_msg(uint32_t *frame_words, const char *msg,
 	*fwc_p = fwc;
 }
 
-/**/
+/* Writes a vector and a word into the specified buffer. */
 #define SAVE_VEC(flex,vec) \
   do {\
   	memcpy((flex), (vec), sizeof((vec))); \
@@ -427,7 +446,20 @@ create_alphanumeric_msg(uint32_t *frame_words, const char *msg,
   } while (0)
 
 /**
+ * @brief Encodes an alphanumeric message given by @p msg, targeting
+ * the given @p cap_code.
  *
+ * @param msg       [in]  ASCII Message to be sent.
+ * @param cap_code        A short-address (7-digit) pager cap code.
+ * @param flex_pckt [out] An output buffer that will holds the entire encoded message.
+ *                        The user should provide a buffer of at least FLEX_BUFFER_SIZE
+ *                        bytes.
+ * @param flex_size       Output buffer size.
+ * @param error     [out] Error flag pointer that indicates whether the encoding was
+ *                        successful or not.
+ *
+ * @return Returns the number of bytes successfully written into the output
+ *         or zero otherwise.
  */
 size_t
 tf_encode_flex_message(const char *msg, uint32_t cap_code,
@@ -475,7 +507,7 @@ tf_encode_flex_message(const char *msg, uint32_t cap_code,
 	SAVE_VEC(flex_pkt_ptr, flex_b);
 	SAVE_VEC(flex_pkt_ptr, flex_a1_inv);
 
-	/* Frame informaton word for frame 0. */
+	/* Frame information word for frame 0. */
 	SAVE_WORD(flex_pkt_ptr, create_fiw(0,0,0,0,0));
 
 	/* S2: BS2 + C + inv.BS2 + inv.C */
