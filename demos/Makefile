@@ -12,8 +12,11 @@ CFLAGS += -I$(CURDIR)/..
 .PHONY: all clean
 all: encode_file send_ttgo
 
-encode_file: encode_file.o $(CURDIR)/../tinyflex.h
-send_ttgo:   send_ttgo.o   $(CURDIR)/../tinyflex.h
+encode_file.o: encode_file.c $(CURDIR)/../tinyflex.h
+send_ttgo.o:   send_ttgo.c   $(CURDIR)/../tinyflex.h
+
+encode_file: encode_file.o
+send_ttgo:   send_ttgo.o
 
 clean:
 	rm -f *.o
