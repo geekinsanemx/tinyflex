@@ -1,6 +1,9 @@
 /*
- * tinyflex_serial: Modified tinyflex to send FLEX packets via serial.
+ * send_ttgo: Send FLEX packets over serial/ttgo-fsk-tx.
  * Written by Davidson Francis (aka Theldus) and Rodrigo Laneth - 2025.
+ *
+ * For the ttgo-fsk-tx firmware, please refer to:
+ *   https://github.com/rlaneth/ttgo-fsk-tx/
  *
  * This is free and unencumbered software released into the public domain.
  */
@@ -18,13 +21,14 @@
 #include <stdint.h>
 #include <termios.h>
 #include <unistd.h>
+#include <poll.h>
 
 #include "tinyflex.h"
 
 /* Default serial parameters */
 #define DEFAULT_DEVICE    "/dev/ttyACM0"
 #define DEFAULT_BAUDRATE  115200
-#define DEFAULT_FREQUENCY 929.3975
+#define DEFAULT_FREQUENCY 929.9375
 #define DEFAULT_POWER     2
 
 static int loop_enabled = 0;
@@ -156,44 +160,50 @@ static void restore_tty(void)
 }
 
 /**
- * @brief Sends a command and checks for response via serial.
+ * @brief Reads from a given @p fd and discards all data sent
+ * but no read until now.
  *
- * @param fd Serial file descriptor.
- * @param command Command to send.
- * @param error_msg Error message to display on failure.
- * @return Returns 0 on success, -1 on error.
+ * Its important to keep a consistent state between each command
+ * sent, so by if the serial device sends unwanted data, we
+ * simply discard before proceeding.
+ *
+ * @param fd File descriptor of the serial device.
+ *
+ * @return Returns a negative number if timeout or if there's
+ * an error. Otherwise, returns the amount of bytes read/discarded.
  */
-static int send_command_and_check(int fd, const char *command,
-	const char *error_msg)
+static int discard_serial(int fd) {
+	char dummy[1024];
+	struct pollfd pfd;
+	pfd.fd = fd;
+	pfd.events = POLLIN;
+	if (poll(&pfd, 1, 2000) <= 0 || !(pfd.events & POLLIN))
+		return -1;
+	return (int) read(fd, dummy, sizeof dummy);
+}
+
+/**
+ * @brief Reads a full line from a given @p fd.
+ *
+ * @param fd        Source to be read from.
+ * @param line      Target buffer to store the read line.
+ * @param line_size Target buffer size.
+ *
+ * @return If success, returns the number of bytes read, -1 otherwise.
+ */
+static ssize_t read_serial_line(int fd, char *line, size_t line_size)
 {
-	char response[256];
-	ssize_t bytes_written;
 	ssize_t bytes_read;
-	size_t  total_read;
+	size_t total_read;
 
-	total_read = 0;
-
-	printf("Sending command: (%s)\n", command);
-
-	/* Send command */
-	bytes_written = write(fd, command, strlen(command));
-	if (bytes_written < 0) {
-		perror("write");
-		return -1;
-	}
-	bytes_written = write(fd, "\n", 1);
-	if (bytes_written < 0) {
-		perror("write");
-		return -1;
-	}
-	tcdrain(fd);
+	tcflush(fd, TCIFLUSH);
+	total_read          = 0;
+	line[line_size - 1] = '\0';
 
 	printf("Reading response...\n");
 
-	/* Read response until newline or timeout */
-	tcflush(fd, TCIFLUSH);
-	while (total_read < sizeof(response) - 1) {
-		bytes_read = read(fd, response + total_read, 1);
+	while (total_read < line_size - 1) {
+		bytes_read = read(fd, line + total_read, 1);
 		if (bytes_read < 0) {
 			perror("read");
 			return -1;
@@ -202,23 +212,75 @@ static int send_command_and_check(int fd, const char *command,
 			fprintf(stderr, "Timeout reading response\n");
 			return -1;
 		}
-		if (response[total_read] == '\n') {
-			response[total_read] = '\0';
+		if (line[total_read] == '\n') {
+			line[total_read] = '\0';
 			break;
 		}
 		total_read++;
 	}
+	return total_read;
+}
 
-	/* Check response format */
-	if (strncmp(response, "__:0:", 5) != 0) {
-		if (strncmp(response, "__:1:", 5) == 0) {
-			fprintf(stderr, "Error: %s - Got response: %s\n",
-				error_msg, response);
-		} else {
-			fprintf(stderr, "Unexpected response format: %s\n",
-				response);
+/**
+ * @brief Sends a given message to the file pointed by @p fd.
+ *
+ * @param fd   Target file descriptor.
+ * @param msg  Message to be sent.
+ * @param size Message buffer size.
+ *
+ * @return Returns 0 if the message could be completely sent,
+ * -1 if there was an error.
+ */
+static ssize_t send_serial(int fd, const char *msg, size_t size)
+{
+	ssize_t bytes_written;
+	size_t  total_written;
+
+	total_written = 0;
+	size = (size == 0) ? strlen(msg) : size;
+
+	while (total_written < size) {
+		bytes_written = write(fd, msg + total_written, size - total_written);
+		if (bytes_written < 0) {
+			perror("write");
+			return -1;
 		}
+		total_written += bytes_written;
+	}
+	tcdrain(fd);
+
+	return 0;
+}
+
+/**
+ * @brief Sends a command and checks for response via serial.
+ *
+ * @param fd Serial file descriptor.
+ * @param command Command to send.
+ * @param error_msg Error message to display on failure.
+ * @return Returns 0 on success, -1 on error.
+ */
+static int send_command_and_check(int fd, const char *command, int size,
+	const char *error_msg)
+{
+	char response[256];
+
+	printf("Sending command: (%.*s)\n", size - 1, command);
+
+	/* Send command */
+	if (send_serial(fd, command, size) < 0)
 		return -1;
+
+	/* Read response until newline, timeout or a matching line */
+	while (read_serial_line(fd, response, sizeof response) < 0) {
+		if (strncmp(response, "CONSOLE:", 8) == 0) {
+			/* Check if error or not. */
+			if (response[8] != '0') {
+				fprintf(stderr, "Error: (%s), Got: %s\n", error_msg, response);
+				return -1;
+			}
+			break;
+		}
 	}
 
 	return 0;
@@ -234,60 +296,24 @@ static int send_command_and_check(int fd, const char *command,
  */
 static int send_binary_data(int fd, const uint8_t *data, size_t size)
 {
-	ssize_t bytes_written;
-	size_t  total_written;
 	char response[256];
-	ssize_t bytes_read;
-	size_t total_read;
-
-	total_written = 0;
-	total_read    = 0;
 
 	printf("Sending binary data (%zu)...\n", size);
 
 	/* Send all binary data */
-	while (total_written < size) {
-		bytes_written = write(fd, data + total_written, size - total_written);
-		if (bytes_written < 0) {
-			perror("write");
-			return -1;
-		}
-		total_written += bytes_written;
-	}
-	tcdrain(fd);
+	if (send_serial(fd, (const char*)data, size) < 0)
+		return -1;
 
-	printf("Reading response for binary data...\n");
-
-	/* Read response */
-	tcflush(fd, TCIFLUSH);
-	while (total_read < sizeof(response) - 1) {
-		bytes_read = read(fd, response + total_read, 1);
-		if (bytes_read < 0) {
-			perror("read");
-			return -1;
-		}
-		if (bytes_read == 0) {
-			fprintf(stderr, "Timeout reading response\n");
-			return -1;
-		}
-		if (response[total_read] == '\n') {
-			response[total_read] = '\0';
+	/* Read response until newline, timeout or a matching line */
+	while (read_serial_line(fd, response, sizeof response) < 0) {
+		if (strncmp(response, "TX:", 3) == 0) {
+			/* Check if error or not. */
+			if (response[3] != '0') {
+				fprintf(stderr, "Error: %s\n", response);
+				return -1;
+			}
 			break;
 		}
-		total_read++;
-	}
-
-	printf("Response for binary data:\n");
-	puts(response);
-	puts("");
-
-	/* Check response */
-	if (strncmp(response, "__:0:", 5) != 0) {
-		if (strncmp(response, "__:1:", 5) == 0)
-			fprintf(stderr, "Error sending binary data: %s\n", response);
-		else
-			fprintf(stderr, "Unexpected response format: %s\n", response);
-		return -1;
 	}
 
 	return 0;
@@ -306,20 +332,24 @@ static int send_flex_via_serial(int fd, struct serial_config *config,
 	const uint8_t *data, size_t size)
 {
 	char cmd_buffer[64];
+	int s;
+
+	/* Ignore all previous messages sent. */
+	(void)discard_serial(fd);
 
 	/* Set frequency */
-	snprintf(cmd_buffer, sizeof(cmd_buffer), "f %.4f", config->frequency);
-	if (send_command_and_check(fd, cmd_buffer, "Failed to set frequency") < 0)
+	s = snprintf(cmd_buffer, sizeof(cmd_buffer), "f %.4f\n", config->frequency);
+	if (send_command_and_check(fd, cmd_buffer, s, "Failed to set frequency") < 0)
 		return -1;
 
 	/* Set TX power */
-	snprintf(cmd_buffer, sizeof(cmd_buffer), "p %d", config->power);
-	if (send_command_and_check(fd, cmd_buffer, "Failed to set TX power") < 0)
+	s = snprintf(cmd_buffer, sizeof(cmd_buffer), "p %d\n", config->power);
+	if (send_command_and_check(fd, cmd_buffer, s, "Failed to set TX power") < 0)
 		return -1;
 
 	/* Send message length */
-	snprintf(cmd_buffer, sizeof(cmd_buffer), "m %zu", size);
-	if (send_command_and_check(fd, cmd_buffer,
+	s = snprintf(cmd_buffer, sizeof(cmd_buffer), "m %zu\n", size);
+	if (send_command_and_check(fd, cmd_buffer, s,
 		"Failed to set message length") < 0)
 		return -1;
 
@@ -587,6 +617,7 @@ int main(int argc, char **argv)
 			if (send_flex_via_serial(fd, &config, vec, read_size) < 0) {
 				if (!loop_enabled)
 					goto error;
+
 				/* In loop mode, continue on error */
 				fprintf(stderr, "Failed to send message, continuing...\n");
 			} else {
