@@ -440,14 +440,14 @@ create_alphanumeric_msg(uint32_t *frame_words, const char *msg,
 
 #define SAVE_WORD(flex,word) \
   do {\
-  	uint32_t tmp_word; \
-	tmp_word  = (((word)        & 0xFF) << 24); \
-	tmp_word |= (((word) >>  8) & 0xFF) << 16;  \
-	tmp_word |= (((word) >> 16) & 0xFF) << 8;   \
-	tmp_word |= (((word) >> 24) & 0xFF);        \
-  	memcpy((flex), &tmp_word, 4); \
-  	((flex)) += 4; \
+    uint32_t w32 = (word); \
+    (flex)[0] = (w32 >> 24) & 0xFF; \
+    (flex)[1] = (w32 >> 16) & 0xFF; \
+    (flex)[2] = (w32 >>  8) & 0xFF; \
+    (flex)[3] =  w32        & 0xFF; \
+    (flex) += 4; \
   } while (0)
+
 
 /**
  * @brief Encodes an alphanumeric message given by @p msg, targeting
