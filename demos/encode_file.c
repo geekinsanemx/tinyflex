@@ -81,8 +81,8 @@ static void usage(const char *prgname)
 		"   -l Loop mode (optional): stays open receiving new lines of messages\n"
 		"                            until EOF\n"
 		"   Example:\n"
-		"     printf '1234567:MY MESSAGE'          | ./%s (no loop mode)\n"
-		"     printf '1234567:MY MSG1\\n1122334:MY MSG2' | ./%s -l (loop mode)\n"
+		"     printf '1234567:MY MESSAGE'               | %s (no loop mode)\n"
+		"     printf '1234567:MY MSG1\\n1122334:MY MSG2' | %s -l (loop mode)\n"
 		"   (binary output goes to stdout!)\n\n"
 
 		"   Note: On loop mode, each output is preceded by a line indicating\n"
@@ -93,7 +93,7 @@ static void usage(const char *prgname)
 		"   <binary output>\n\n"
 
 		"Normal mode:\n"
-		"   ./%s 1234567 'MY MESSAGE' output.bin",
+		"   %s 1234567 'MY MESSAGE' output.bin",
 		prgname, prgname, prgname, prgname, prgname);
 	exit(1);
 }
