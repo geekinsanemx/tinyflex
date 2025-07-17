@@ -119,7 +119,7 @@ Normal mode:
 
 ## Acknowledgements
 This project came from discussions and experiments on paging that I have worked
-on along with @rlaneth. He's gifted me a Motorola Advisor Elite pager and a
+on along with [@rlaneth]. He's gifted me a Motorola Advisor Elite pager and a
 TTGO LoRa32-OLED board that have made this project possible.
 
 [@rlaneth]: https://github.com/rlaneth
