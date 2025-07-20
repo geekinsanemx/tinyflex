@@ -15,6 +15,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <stdint.h>
+#include <limits.h>
 
 #include "tinyflex.h"
 
@@ -27,41 +28,37 @@ static const char *msg_errors[] = {
 };
 
 /*
- * @brief Safe string-to-uint32_t routine.
+ * @brief Safe string-to-uint64_t routine.
  * Handles overflow, invalid characters, and rejects negative input.
  *
- * @param out Pointer to uint32_t.
+ * @param out Pointer to uint64_t.
  * @param s String to be converted.
  *
  * @return Returns 0 on success, -1 on error.
  */
-static int str2uint32(uint32_t *out, const char *s)
+static int str2uint64(uint64_t *out, const char *s)
 {
     char *end;
     unsigned long ul;
     const char *p = s;
 
-    /* Check for empty string or leading whitespace only */
-    if (p[0] == '\0' || isspace(p[0]))
-        return -1;
-
-    /* Reject negative numbers */
-    if (*p == '-')
+    /* Check for empty. */
+    if (p[0] == '\0')
         return -1;
 
     errno = 0;
-    ul = strtoul(p, &end, 10);
+    ul = strtoull(p, &end, 10);
 
     /* Check if:
      * - No digits were found
      * - Overflow
      * - Extra chars at the end
-     * - If fits into uint32_t
+     * - If fits into uint64_t
      */
-    if (end == p || errno == ERANGE || *end != '\0' || ul > UINT32_MAX)
+    if (end == p || errno == ERANGE || *end != '\0' || ul > UINT64_MAX)
         return -1;
 
-    *out = (uint32_t)ul;
+    *out = (uint64_t)ul;
     return 0;
 }
 
@@ -107,14 +104,14 @@ static void usage(const char *prgname)
  * @param argv     duh
  * @param out_file Output file name (normal-mode) or NULL if stdin mode.    
  */
-static void read_params(uint32_t *capcode, char *msg, int argc, char **argv,
+static void read_params(uint64_t *capcode, char *msg, int argc, char **argv,
 	char **out_file)
 {
 	size_t msg_size;
 
 	/* Normal mode: ./prgname <capcode> <message> <output_file> */
 	if (argc == 4) {
-		if (str2uint32(capcode, argv[1]) < 0) {
+		if (str2uint64(capcode, argv[1]) < 0) {
 			fprintf(stderr, "Invalid capcode: %s\n", argv[1]);
 			usage(argv[0]);
 		}
@@ -152,7 +149,7 @@ static void read_params(uint32_t *capcode, char *msg, int argc, char **argv,
  * @param len_ptr     Line read length.
  * @return Returns 0 if success, 1 if EOF and 2 if parsing error.
  */
-static int read_stdin_message(uint32_t *capcode_ptr, char *message_buf,
+static int read_stdin_message(uint64_t *capcode_ptr, char *message_buf,
 	char **line_ptr, size_t *len_ptr)
 {
 	char *current_message;
@@ -177,7 +174,7 @@ static int read_stdin_message(uint32_t *capcode_ptr, char *message_buf,
 	}
 	*colon_pos = '\0';
 
-	if (str2uint32(capcode_ptr, *line_ptr) < 0)  {
+	if (str2uint64(capcode_ptr, *line_ptr) < 0)  {
 		fprintf(stderr, "Invalid capcode in input: '%s'\n", *line_ptr);
 		return 2;
 	}
@@ -199,7 +196,7 @@ int main(int argc, char **argv)
 {
 	uint8_t vec[FLEX_BUFFER_SIZE] = {0};
 	char message[MAX_CHARS_ALPHA] = {0};
-	uint32_t capcode;
+	uint64_t capcode;
 	size_t read_size;
 	char *out_file;
 	char *line;

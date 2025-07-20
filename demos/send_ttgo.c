@@ -18,10 +18,11 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <signal.h>
-#include <stdint.h>
+#include <inttypes.h>
 #include <termios.h>
 #include <unistd.h>
 #include <poll.h>
+#include <limits.h>
 
 #include "tinyflex.h"
 
@@ -41,10 +42,10 @@ static const char *msg_errors[] = {
 
 /* Serial configuration */
 struct serial_config {
-	char *device;
-	uint32_t power;
 	double frequency;
-	uint32_t baudrate;
+	int baudrate;
+	char *device;
+	int power;
 };
 
 /* Global for TTY restoration */
@@ -52,43 +53,70 @@ static struct termios orig_tty;
 static int tty_saved = 0;
 static int serial_fd = -1;
 
+/**
+ * Safe string-to-int routine that takes into account:
+ * - Overflow and Underflow
+ * - No undefined behaviour
+ *
+ * @param out Pointer to integer.
+ * @param s String to be converted.
+ *
+ * @return Returns 0 if success and a negative number otherwise.
+ */
+static int str2int(int *out, char *s)
+{
+	char *end;
+	if (s[0] == '\0')
+		return (-1);
+	errno = 0;
+
+	long l = strtol(s, &end, 10);
+
+	/* Both checks are needed because INT_MAX == LONG_MAX is possible. */
+	if (l > INT_MAX || (errno == ERANGE && l == LONG_MAX))
+		return (-1);
+	if (l < INT_MIN || (errno == ERANGE && l == LONG_MIN))
+		return (-1);
+	if (*end != '\0')
+		return (-1);
+
+	*out = l;
+	return (0);
+}
+
 /*
- * @brief Safe string-to-uint32_t routine.
+ * @brief Safe string-to-uint64_t routine.
  * Handles overflow, invalid characters, and rejects negative input.
  *
- * @param out Pointer to uint32_t.
+ * @param out Pointer to uint64_t.
  * @param s String to be converted.
  *
  * @return Returns 0 on success, -1 on error.
  */
-static int str2uint32(uint32_t *out, const char *s)
+static int str2uint64(uint64_t *out, const char *s)
 {
-	char *end;
-	unsigned long ul;
-	const char *p = s;
+    char *end;
+    unsigned long ul;
+    const char *p = s;
 
-	/* Check for empty string or leading whitespace only */
-	if (p[0] == '\0' || isspace(p[0]))
-		return -1;
+    /* Check for empty. */
+    if (p[0] == '\0')
+        return -1;
 
-	/* Reject negative numbers */
-	if (*p == '-')
-		return -1;
+    errno = 0;
+    ul = strtoull(p, &end, 10);
 
-	errno = 0;
-	ul = strtoul(p, &end, 10);
+    /* Check if:
+     * - No digits were found
+     * - Overflow
+     * - Extra chars at the end
+     * - If fits into uint64_t
+     */
+    if (end == p || errno == ERANGE || *end != '\0' || ul > UINT64_MAX)
+        return -1;
 
-	/* Check if:
-	 * - No digits were found
-	 * - Overflow
-	 * - Extra chars at the end
-	 * - If fits into uint32_t
-	 */
-	if (end == p || errno == ERANGE || *end != '\0' || ul > UINT32_MAX)
-		return -1;
-
-	*out = (uint32_t)ul;
-	return 0;
+    *out = (uint64_t)ul;
+    return 0;
 }
 
 /**
@@ -404,7 +432,7 @@ static void usage(const char *prgname)
  * @param config   Serial configuration struct to fill.
  * @param is_stdin Set to 1 if stdin mode, 0 for normal mode.
  */
-static void read_params(uint32_t *capcode, char *msg, int argc, char **argv,
+static void read_params(uint64_t *capcode, char *msg, int argc, char **argv,
 	struct serial_config *config, int *is_stdin)
 {
 	int non_opt_start;
@@ -424,7 +452,7 @@ static void read_params(uint32_t *capcode, char *msg, int argc, char **argv,
 			config->device = optarg;
 			break;
 		case 'b':
-			if (str2uint32(&config->baudrate, optarg) < 0) {
+			if (str2int(&config->baudrate, optarg) < 0) {
 				fprintf(stderr, "Invalid baudrate: %s\n", optarg);
 				usage(argv[0]);
 			}
@@ -437,7 +465,7 @@ static void read_params(uint32_t *capcode, char *msg, int argc, char **argv,
 			}
 			break;
 		case 'p':
-			if (str2uint32(&config->power, optarg) < 0 || 
+			if (str2int(&config->power, optarg) < 0 || 
 				config->power < 2 || config->power > 17)
 			{
 				fprintf(stderr, "Invalid power: %s\n", optarg);
@@ -457,7 +485,7 @@ static void read_params(uint32_t *capcode, char *msg, int argc, char **argv,
 	/* Check remaining arguments */
 	if (argc - non_opt_start == 2) {
 		/* Normal mode: capcode and message */
-		if (str2uint32(capcode, argv[non_opt_start]) < 0) {
+		if (str2uint64(capcode, argv[non_opt_start]) < 0) {
 			fprintf(stderr, "Invalid capcode: %s\n",
 				argv[non_opt_start]);
 			usage(argv[0]);
@@ -486,7 +514,7 @@ static void read_params(uint32_t *capcode, char *msg, int argc, char **argv,
  * @param len_ptr     Line read length.
  * @return Returns 0 if success, 1 if EOF and 2 if parsing error.
  */
-static int read_stdin_message(uint32_t *capcode_ptr, char *message_buf,
+static int read_stdin_message(uint64_t *capcode_ptr, char *message_buf,
 	char **line_ptr, size_t *len_ptr)
 {
 	char *current_message;
@@ -512,7 +540,7 @@ static int read_stdin_message(uint32_t *capcode_ptr, char *message_buf,
 	}
 	*colon_pos = '\0';
 
-	if (str2uint32(capcode_ptr, *line_ptr) < 0)  {
+	if (str2uint64(capcode_ptr, *line_ptr) < 0)  {
 		fprintf(stderr, "Invalid capcode in input: '%s'\n", *line_ptr);
 		return 2;
 	}
@@ -548,7 +576,7 @@ int main(int argc, char **argv)
 	uint8_t vec[FLEX_BUFFER_SIZE] = {0};
 	char message[MAX_CHARS_ALPHA] = {0};
 	struct serial_config config;
-	uint32_t capcode;
+	uint64_t capcode;
 	size_t read_size;
 	int is_stdin;
 	char *line;
@@ -621,7 +649,7 @@ int main(int argc, char **argv)
 				/* In loop mode, continue on error */
 				fprintf(stderr, "Failed to send message, continuing...\n");
 			} else {
-				printf("Sent %zu bytes for capcode %u\n",
+				printf("Sent %zu bytes for capcode %" PRId64"\n",
 					read_size, capcode);
 			}
 		}

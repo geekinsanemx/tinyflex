@@ -41,9 +41,12 @@ extern "C" {
 #define WORDS_PER_FRAME  (BLOCKS_PER_FRAME*WORDS_PER_BLOCK)
 
 /* Number of words that can be used to store an alphanumeric encoded
- * message: Total words in frame - 3 (biw1 + shortaddress + alphanum vector)
+ * message: Total words in frame - 4 (biw1 + shortaddress + alphanum vector)
+ *
+ * Since alpha num vector might be one or two words (short vs long addresses),
+ * its better to play safe and reduce 1 word for both types.
  */
-#define MAX_WORDS_ALPHA (WORDS_PER_FRAME - 3)
+#define MAX_WORDS_ALPHA (WORDS_PER_FRAME - 4)
 
 /* Since the first word in the alphanumeric message is flags and the second
  * word also contains 7 bits of flags, we should decrease in 4 the total number
@@ -265,7 +268,7 @@ create_alphanum_vector_word(uint32_t msg_start, uint32_t msg_words)
  * @param cap_code Code to be validated.
  * @return Returns 1 if valid, 0 otherwise.
  */
-static int is_shortaddr_valid(uint32_t cap_code)
+static int is_shortaddr_valid(uint64_t cap_code)
 {
 	/*
 	 * According to Section 3.8, a short address is a 7-digit number that
@@ -293,6 +296,77 @@ static uint32_t create_short_address(uint32_t cap_code)
 	dw = (cap_code + 32768) & 0x1FFFFF;
 	dw = encode_word(rev32(dw));
 	return dw;
+}
+
+/**
+ * @brief Validates a given cap code if its a valid long address.
+ * @param cap_code Code to be validated.
+ * @return Returns 1 if valid, 0 otherwise.
+ */
+static int is_longaddr_valid(uint64_t cap_code) {
+	return (cap_code >= 2101249ULL && cap_code <= 4297068542ULL);
+}
+
+/**
+ * @brief Validates whether if a given cap code is valid or not.
+ *
+ * @param cap_code Capcode to be checked.
+ * @param is_long  Pointer to indicate whether the capcode is
+ *                 long or short.
+ * @return Returns 1 if valid, 0 otherwise.
+ */
+static int is_capcode_valid(uint64_t cap_code, int *is_long) {
+	*is_long = 0;
+	if (is_shortaddr_valid(cap_code))
+		return 1;
+	else if (is_longaddr_valid(cap_code)) {
+		*is_long = 1;
+		return 1;
+	}
+	return 0;
+}
+
+/**
+ * @brief Creates a long address based on a 9-10 digit cap code.
+ *
+ * @param cap_code 9-10 digit cap code to be encoded.
+ * @param words    Pointer to the returned converted words.
+ *
+ * @return Returns 0 if success, -1 otherwise.
+ *
+ * @note Refer to 'Reference Document A: 5.15.5 CAPCODE to Binary Conversion'.
+ */
+static int create_long_address(uint64_t cap_code, uint32_t words[2])
+{
+	uint64_t result;
+	uint32_t w1, w2;
+
+	/* Set 1-2. */
+	if (cap_code >= 2101249ULL && cap_code <= 1075843072ULL) {
+		result = cap_code - 2068481ULL;
+		w1 = (result % 32768) + 1;
+		w2 = 2097151 - (result / 32768);
+	}
+
+	/* Sets 1-3 and 1-4. */
+	else if (cap_code >= 1075843073ULL && cap_code <= 3223326720ULL) {
+		result = cap_code - 2068481ULL;
+		w1 = (result % 32768) + 1; /* Same as 1-2. */
+		w2 = (result / 32768) + 1933312;
+	}
+
+	/* Set 2-3. */
+	else if (cap_code >= 3223326721ULL && cap_code <= 4297068542ULL) {
+		result = cap_code - 2068479ULL;
+		w1 = (result % 32768) + 2064383;
+		w2 = (result / 32768) + 1867776;
+	}
+	else
+		return -1;
+
+	words[0] = encode_word(rev32(w1));
+	words[1] = encode_word(rev32(w2));
+	return 0;
 }
 
 /**
@@ -352,7 +426,7 @@ static void interleave_block(uint32_t block_num, uint32_t *frame_words)
  */
 static void
 create_alphanumeric_msg(uint32_t *frame_words, const char *msg,
-	uint32_t msg_start, uint32_t *fwc_p)
+	uint32_t msg_start, uint32_t *fwc_p, int is_long)
 {
 	uint32_t msg_word[MAX_WORDS_ALPHA] = {0};
 	uint32_t word_idx;
@@ -423,13 +497,45 @@ create_alphanumeric_msg(uint32_t *frame_words, const char *msg,
 
 	/* == Add our data into the destination frame words. == */
 	fwc = *fwc_p;
-	frame_words[fwc++] = create_alphanum_vector_word(msg_start, word_idx);
 
+	/*
+	 * The spec is *very* confusing here:
+	 * On 'Reference Document A', 3.8.7.4. Alphanumeric Vector, it says:
+	 *
+	 *   Note: Long address results in second vector word which becomes the
+	 *   first message word. Remaining message words in the message field is
+	 *   reduced by 1.
+	 *
+	 * Our current approach already put the first message right after the vector
+	 * word, so this is basically the same behavior used for short addresses.
+	 *
+	 * Our frame_words:
+	 * Short address:
+	 *    frame_words[0] = BIW
+	 *    frame_words[1] = short address
+	 *    frame_words[2] = alpha num vector
+	 *    frame_words[3] = beginning of the message
+	 *
+	 * Long address:
+	 *    frame_words[0] = BIW
+	 *    frame_words[1] = long address first half
+	 *    frame_words[2] = long address second half
+	 *    frame_words[3] = alpha num vector
+	 *    frame_words[4] = beginning of the message[0] / alpha num vector??
+	 *    frame_words[5] = true beginning??
+	 *
+	 * When it says that my vector is 2 words and the second word is also the
+	 * first message, implicitly it is saying that on my msg_start I should
+	 * skip that idx too? i.e., start at 5 instead of 4... anyway, this works
+	 * on my Motorola Advisor Elite.
+	 */
+	frame_words[fwc++] = create_alphanum_vector_word(msg_start + is_long, word_idx);
 	for (i = 0; i < word_idx; i++)
 		frame_words[fwc++] = encode_word(rev32(msg_word[i]));
 
 	*fwc_p = fwc;
 }
+
 
 /* Writes a vector and a word into the specified buffer. */
 #define SAVE_VEC(flex,vec) \
@@ -454,7 +560,7 @@ create_alphanumeric_msg(uint32_t *frame_words, const char *msg,
  * the given @p cap_code.
  *
  * @param msg       [in]  ASCII Message to be sent.
- * @param cap_code        A short-address (7-digit) pager cap code.
+ * @param cap_code        A short or long address pager cap code.
  * @param flex_pckt [out] An output buffer that will holds the entire encoded message.
  *                        The user should provide a buffer of at least FLEX_BUFFER_SIZE
  *                        bytes.
@@ -466,13 +572,15 @@ create_alphanumeric_msg(uint32_t *frame_words, const char *msg,
  *         or zero otherwise.
  */
 size_t
-tf_encode_flex_message(const char *msg, uint32_t cap_code,
+tf_encode_flex_message(const char *msg, uint64_t cap_code,
 	uint8_t *flex_pckt, size_t flex_size, int *error)
 {
 	uint32_t frame_words[WORDS_PER_FRAME] = {0};
 	uint8_t  *flex_pkt_ptr;
-	uint32_t fwc;  /* Frame word counter.     */
-	uint32_t i;
+	uint32_t w[2];  /* Long address words.     */
+	int   is_long;  /* Is cap-code long?.      */
+	uint32_t  fwc;  /* Frame word counter.     */
+	uint32_t    i;
 
 	if (!error)
 		return 0;
@@ -483,7 +591,7 @@ tf_encode_flex_message(const char *msg, uint32_t cap_code,
 		*error = -TF_INVALID_MESSAGE;
 		return 0;
 	}
-	if (!is_shortaddr_valid(cap_code)) {
+	if (!is_capcode_valid(cap_code, &is_long)) {
 		*error = -TF_INVALID_CAPCODE;
 		return 0;
 	}
@@ -518,11 +626,18 @@ tf_encode_flex_message(const char *msg, uint32_t cap_code,
 	SAVE_VEC(flex_pkt_ptr, flex_cblock);
 
 	/* BIW1 and address. */
-	frame_words[fwc++] = create_biw1(0, 0, 2, 0, 0);
-	frame_words[fwc++] = create_short_address(cap_code);
+	frame_words[fwc++] = create_biw1(0, 0, 2 + is_long, 0, 0);
+
+	if (is_long) {
+		create_long_address(cap_code, w);
+		frame_words[fwc++] = w[0];
+		frame_words[fwc++] = w[1];
+	}
+	else
+		frame_words[fwc++] = create_short_address(cap_code);
 
 	/* Create alphanumeric message. */
-	create_alphanumeric_msg(frame_words, msg, 3, &fwc);
+	create_alphanumeric_msg(frame_words, msg, 3 + is_long, &fwc, is_long);
 
 	/* If our block is not fully filled yet, we should fill with
 	 * idle blocks of all 1s and all 0s, per Section 3.4.1.
