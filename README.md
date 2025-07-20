@@ -4,7 +4,7 @@
 <br/>
 <br/>
 tinyflex is a **single-header**, dependency-free FLEX™ protocol encoder written
-in ISO C89. It produces fully-valid FLEX paging messages with zero dynamic
+in C99. It produces fully-valid FLEX paging messages with zero dynamic
 allocations, no I/O, and no platform-specific dependencies, making it suitable
 for freestanding environments.
 
@@ -15,15 +15,15 @@ to implement the entire FLEX specification but focuses on a subset that provides
 
 - **Speed**: 1600bps / 2-FSK
 - **Frame:** Single-frame support
-- **Messages type**: Alphanumeric messages (ASCII) up to 251 characters
-- **Capcode**: 7-digit capcode support (9-digit on roadmap!)
+- **Messages type**: Alphanumeric messages (ASCII) up to 248 characters
+- **Capcode**: Short and long addresses supported!
 
 ## Usage
 Usage is straightforward and centers around a single public function:
 
 ```c
 size_t
-tf_encode_flex_message(const char *msg, uint32_t cap_code,
+tf_encode_flex_message(const char *msg, uint64_t cap_code,
     uint8_t *flex_pckt, size_t flex_size, int *error);
 ```
 
