@@ -230,6 +230,7 @@ static int read_stdin_message(uint64_t *capcode_ptr, char *message_buf,
 /* Main =). */
 int main(int argc, char **argv)
 {
+	struct tf_message_config config = {0};
 	uint8_t vec[FLEX_BUFFER_SIZE] = {0};
 	char message[MAX_CHARS_ALPHA] = {0};
 	uint64_t capcode;
@@ -259,7 +260,6 @@ int main(int argc, char **argv)
 			goto error;
 		}
 
-		struct tf_message_config config = {0};
 		config.mail_drop = mail_drop_enabled;
 		read_size = tf_encode_flex_message_ex(message, capcode, vec,
 			sizeof vec, &err, &config);
@@ -285,7 +285,6 @@ int main(int argc, char **argv)
 			continue;
 		}
 
-		struct tf_message_config config = {0};
 		config.mail_drop = mail_drop_enabled;
 		read_size = tf_encode_flex_message_ex(message, capcode, vec,
 			sizeof vec, &err, &config);

@@ -584,6 +584,7 @@ static void signal_handler(int sig)
 /* Main =). */
 int main(int argc, char **argv)
 {
+	struct tf_message_config msg_config = {0};
 	uint8_t vec[FLEX_BUFFER_SIZE] = {0};
 	char message[MAX_CHARS_ALPHA] = {0};
 	struct serial_config config;
@@ -625,7 +626,6 @@ int main(int argc, char **argv)
 
 	/* Normal mode */
 	if (!is_stdin) {
-		struct tf_message_config msg_config = {0};
 		msg_config.mail_drop = mail_drop_enabled;
 		read_size = tf_encode_flex_message_ex(message, capcode, vec,
 			sizeof vec, &err, &msg_config);
@@ -655,7 +655,6 @@ int main(int argc, char **argv)
 			continue;
 		}
 
-		struct tf_message_config msg_config = {0};
 		msg_config.mail_drop = mail_drop_enabled;
 		read_size = tf_encode_flex_message_ex(message, capcode, vec,
 			sizeof vec, &err, &msg_config);
