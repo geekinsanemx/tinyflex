@@ -1,12 +1,10 @@
 #include <cmath>
-#include <complex>
 #include <cstring>
 #include <fstream>
 #include <iostream>
 #include <libhackrf/hackrf.h>
 #include <netinet/in.h>
 #include <string>
-#include <sys/types.h>
 #include <thread>
 #include <unistd.h>
 #include <vector>
@@ -88,7 +86,13 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    config_file >> config;
+    try {
+        config_file >> config;
+    } catch (const std::exception& e) {
+        std::cerr << "Failed to parse config.json: " << e.what() << std::endl;
+        return 1;
+    }
+
     int PORT        = config["PORT"];
     int SAMPLE_RATE = config["SAMPLE_RATE"];
     int BITRATE     = config["BITRATE"];
