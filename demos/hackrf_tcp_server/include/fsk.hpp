@@ -51,3 +51,56 @@ inline std::vector<double> generate_fsk_signal(
     }
     return output_signal;
 }
+
+/**
+ * Converts a FLEX buffer to FSK-modulated int8_t IQ samples.
+ *
+ * @param flex_buffer      Pointer to the FLEX-encoded buffer.
+ * @param flex_len         Length of the FLEX buffer.
+ * @param sample_rate      Output sample rate (Hz).
+ * @param bitrate          Bitrate (bps).
+ * @param amplitude        Amplitude scaling (max 127).
+ * @param freq_dev         Frequency deviation (Hz).
+ * @return std::vector<int8_t> IQ samples interleaved as [I, Q, ...].
+ */
+inline std::vector<int8_t> generate_fsk_iq_samples(
+    const uint8_t* flex_buffer,
+    size_t flex_len,
+    int sample_rate,
+    int bitrate,
+    int amplitude,
+    int freq_dev
+) {
+    // Convert flex_buffer to binary vector
+    std::vector<int> binary_data;
+    for (size_t i = 0; i < flex_len; ++i) {
+        for (int b = 7; b >= 0; --b) {
+            binary_data.push_back((flex_buffer[i] >> b) & 0x01);
+        }
+    }
+    double samples_per_bit    = (double)sample_rate / bitrate;
+    int    samples_per_symbol = (int)samples_per_bit;
+    double freq_0             = -freq_dev;
+    double freq_1             = +freq_dev;
+
+    // Generate FSK I/Q signal
+    std::vector<double> iq_signal = generate_fsk_signal(
+        binary_data,
+        freq_0,
+        freq_1,
+        sample_rate,
+        samples_per_symbol
+    );
+
+    // Convert to int8_t samples with amplitude scaling and clipping
+    std::vector<int8_t> iq_samples;
+    iq_samples.reserve(iq_signal.size());
+    for (size_t i = 0; i < iq_signal.size(); ++i) {
+        int val = static_cast<int>(std::round(amplitude * iq_signal[i]));
+        if (val > 127) val = 127;
+        else if (val < -127) val = -127;
+        iq_samples.push_back(static_cast<int8_t>(val));
+    }
+
+    return iq_samples;
+}

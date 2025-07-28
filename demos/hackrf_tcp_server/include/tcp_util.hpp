@@ -7,11 +7,12 @@
 
 inline int setup_tcp_server(int port, struct sockaddr_in& address) {
     int server_fd;
-    int opt = 1;
+    int opt                = 1;
+
     memset(&address, 0, sizeof(address));
-    address.sin_family = AF_INET;
+    address.sin_family      = AF_INET;
     address.sin_addr.s_addr = INADDR_ANY;
-    address.sin_port = htons(port);
+    address.sin_port        = htons(port);
 
     if ((server_fd = socket(AF_INET, SOCK_STREAM, 0)) == 0) {
         perror("socket failed");
@@ -29,6 +30,7 @@ inline int setup_tcp_server(int port, struct sockaddr_in& address) {
         close(server_fd);
         return -1;
     }
+
     if (listen(server_fd, 1) < 0) {
         perror("listen");
         close(server_fd);

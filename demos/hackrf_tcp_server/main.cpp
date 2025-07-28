@@ -1,21 +1,16 @@
-#include <cmath>
 #include <cstring>
-#include <fstream>
 #include <iostream>
 #include <libhackrf/hackrf.h>
 #include <netinet/in.h>
 #include <string>
-#include <thread>
 #include <unistd.h>
-#include <vector>
 #include "../../tinyflex.h"
-#include "config.hpp"
-#include "fsk.hpp"
-#include "hackrf_util.hpp"
-#include "flex_util.hpp"
-#include "tcp_util.hpp"
-#include "iq_util.hpp"
-#include "hackrf_tx_util.hpp"
+#include "include/config.hpp"
+#include "include/fsk.hpp"
+#include "include/hackrf_util.hpp"
+#include "include/flex_util.hpp"
+#include "include/tcp_util.hpp"
+#include "include/iq_util.hpp"
 
 #ifndef M_TAU
 // Why calculate 2 * PI when we can just use a constant?
@@ -37,23 +32,22 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    int PORT        = config.PORT;
-    int SAMPLE_RATE = config.SAMPLE_RATE;
-    int BITRATE     = config.BITRATE;
-    int AMPLITUDE   = config.AMPLITUDE;
-    int FREQ_DEV    = config.FREQ_DEV;
-    int TX_GAIN     = config.TX_GAIN;
-
+    int PORT          = config.PORT;
+    int SAMPLE_RATE   = config.SAMPLE_RATE;
+    int BITRATE       = config.BITRATE;
+    int AMPLITUDE     = config.AMPLITUDE;
+    int FREQ_DEV      = config.FREQ_DEV;
+    int TX_GAIN       = config.TX_GAIN;
 
     // TCP server setup
     struct sockaddr_in address;
-    int server_fd = setup_tcp_server(PORT, address);
+    int server_fd     = setup_tcp_server(PORT, address);
     if (server_fd < 0) {
         return 1;
     }
 
     int client_fd;
-    int addrLen = sizeof(address);
+    int addrLen       = sizeof(address);
     char buffer[2048] = {0};
 
     // Constant loop, waiting for a connection.
@@ -90,8 +84,53 @@ int main(int argc, char* argv[]) {
         std::string message     = input.substr(pos1 + 1, pos2 - pos1 - 1);
         std::string freq_str    = input.substr(pos2 + 1);
 
-        int capcode   = std::stoi(capcode_str);
-        int frequency = std::stoi(freq_str);
+        try {
+            uint64_t capcode = std::stoull(capcode_str);
+            if (tinyflex::is_capcode_valid(capcode) == 0) {
+                throw std::invalid_argument("Invalid capcode: " + capcode_str);
+            }
+        } catch (const std::invalid_argument& e) {
+            std::string error_msg = std::to_string(error);
+            printf("%s\n", error_msg);
+
+            // Send message back to client
+            send(client_fd, error_msg.c_str(), error_msg.size(), 0);
+            // Close the client connection
+            close(client_fd);
+            continue;
+        } catch (const std::out_of_range& e) {
+            std::string error_msg = "Capcode out of range: " + capcode_str;
+            printf("%s\n", error_msg);
+
+            // Send message back to client
+            send(client_fd, error_msg.c_str(), error_msg.size(), 0);
+            // Close the client connection
+            close(client_fd);
+            continue;
+        }
+
+        try {
+            long frequency = std::stoul(freq_str);
+            if (frequency < 1000000 || frequency > 6000000000) {
+                throw std::out_of_range("Frequency out of valid range: " + freq_str);
+            }
+        } catch (const std::invalid_argument& e) {
+            std::string error_msg = "Invalid frequency: " + std::to_string(error);
+            printf("%s\n", error_msg);
+            // Send message back to client
+            send(client_fd, error_msg.c_str(), error_msg.size(), 0);
+            close(client_fd);
+            continue;
+        } catch (const std::out_of_range& e) {
+            std::string error_msg = std::to_string(error);
+            printf("%s\n", error_msg);
+
+            // Send message back to client
+            send(client_fd, error_msg.c_str(), error_msg.size(), 0);
+            close(client_fd);
+            continue;
+        }
+
         printf("Received: CAPCODE=%d, MESSAGE='%s', FREQUENCY=%d\n", capcode, message.c_str(), frequency);
 
         // Encode message using TinyFlex
@@ -99,7 +138,12 @@ int main(int argc, char* argv[]) {
         int error = 0;
         size_t flex_len = 0;
         if (!encode_flex_message(message, capcode, flex_buffer, sizeof(flex_buffer), flex_len, error)) {
-            printf("tf_encode_flex_message failed! Error code: %d\n", error);
+            std::string error_msg = "Error encoding message: " + std::to_string(error);
+            printf("%s\n", error_msg.c_str());
+
+            // Send message back to client
+            send(client_fd, error_msg.c_str(), error_msg.size(), 0);
+            // Close the client connection
             close(client_fd);
             continue;
         }
@@ -123,41 +167,15 @@ int main(int argc, char* argv[]) {
 
         int result = 0;
 
-        // Convert flex_buffer to binary vector
-        std::vector<int> binary_data;
-        for (size_t i = 0; i < flex_len; ++i) {
-            for (int b = 7; b >= 0; --b) {
-                binary_data.push_back((flex_buffer[i] >> b) & 0x01);
-            }
-        }
-
-        double samples_per_bit    = (double)SAMPLE_RATE / BITRATE;
-        int    samples_per_symbol = (int)samples_per_bit;
-        double freq_0             = -FREQ_DEV; // Centered at 0, deviation -/+ FREQ_DEV
-        double freq_1             = +FREQ_DEV;
-            
-        // Generate FSK I/Q signal using generate_fsk_signal
-        std::vector<double> iq_signal = generate_fsk_signal(
-            binary_data,
-            freq_0,
-            freq_1,
+        // Generate FSK IQ samples from FLEX buffer
+        std::vector<int8_t> iq_samples = generate_fsk_iq_samples(
+            flex_buffer,
+            flex_len,
             SAMPLE_RATE,
-            samples_per_symbol
+            BITRATE,
+            AMPLITUDE,
+            FREQ_DEV
         );
-
-        // Convert to int8_t samples with amplitude scaling and clipping
-        std::vector<int8_t> iq_samples;
-        iq_samples.reserve(iq_signal.size());
-        for (size_t i = 0; i < iq_signal.size(); ++i) {
-            int val = static_cast<int>(std::round(AMPLITUDE * iq_signal[i]));
-            if (val > 127) {
-                val = 127;
-            } else if (val < -127) {
-                val = -127;
-            }
-
-            iq_samples.push_back(static_cast<int8_t>(val));
-        }
 
         // --- Transmit IQ samples ---
         if (debug_mode) {
@@ -173,6 +191,9 @@ int main(int argc, char* argv[]) {
             printf("Debug mode active, skipping HackRF transmission.\n");
         }
 
+        // Send success message back to client
+        std::string success_msg = "Message sent successfully!";
+        send(client_fd, success_msg.c_str(), success_msg.size(), 0);
         close_hackrf(device);
         close(client_fd);
     }

@@ -3,7 +3,7 @@
 #include <cstdint>
 #include <cstring>
 #include <string>
-#include "../../tinyflex.h"
+#include "../../../tinyflex.h"
 
 inline bool encode_flex_message(const std::string& message, int capcode, uint8_t* flex_buffer, size_t flex_buffer_size, size_t& flex_len, int& error) {
     memset(flex_buffer, 0, flex_buffer_size);
