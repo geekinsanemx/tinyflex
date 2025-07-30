@@ -7,7 +7,7 @@ SRC = main.cpp
 
 all: $(TARGET)
 
-$(TARGET): $(SRC) json.hpp
+$(TARGET): $(SRC)
 	$(CXX) $(CXXFLAGS) -o $(TARGET) $(SRC) $(LDFLAGS)
 
 clean:
