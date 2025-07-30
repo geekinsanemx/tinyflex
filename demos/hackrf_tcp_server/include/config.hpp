@@ -36,63 +36,57 @@ inline bool load_config(const std::string& filename, Config& cfg) {
         val.erase(0, val.find_first_not_of(" \t"));
         val.erase(val.find_last_not_of(" \t") + 1);
 
-        switch (key) {
-            case "PORT":
-                try {
-                    cfg.PORT = std::stoul(val);
-                } catch (...) {
-                    std::cerr << "Invalid PORT value: " << val << std::endl;
-                    return false;
-                }
-                break;
-
-            case "SAMPLE_RATE":
-                try {
-                    cfg.SAMPLE_RATE = std::stoull(val);
-                } catch (...) {
-                    std::cerr << "Invalid SAMPLE_RATE value: " << val << std::endl;
-                    return false;
-                }
-                break;
-
-            case "BITRATE":
-                try {
-                    cfg.BITRATE = std::stoul(val);
-                } catch (...) {
-                    std::cerr << "Invalid BITRATE value: " << val << std::endl;
-                    return false;
-                }
-                break;
-
-            case "AMPLITUDE":
-                try {
-                    cfg.AMPLITUDE = static_cast<int8_t>(std::stoi(val));
-                } catch (...) {
-                    std::cerr << "Invalid AMPLITUDE value: " << val << std::endl;
-                    return false;
-                }
-                break;
-
-            case "FREQ_DEV":
-                try {
-                    cfg.FREQ_DEV = std::stoul(val);
-                } catch (...) {
-                    std::cerr << "Invalid FREQ_DEV value: " << val << std::endl;
-                    return false;
-                }
-                break;
-            case "TX_GAIN":
-                try {
-                    cfg.TX_GAIN = static_cast<uint8_t>(std::stoi(val));
-                } catch (...) {
-                    std::cerr << "Invalid TX_GAIN value: " << val << std::endl;
-                    return false;
-                }
-                break;
-
-            default:
-                std::cerr << "Unknown configuration key: " << key << std::endl;
+        if (key == "PORT") {
+            try {
+                cfg.PORT = std::stoul(val);
+            } catch (...) {
+                std::cerr << "Invalid PORT value: " << val << std::endl;
                 return false;
+            }
+        }
+        else if (key == "SAMPLE_RATE") {
+            try {
+                cfg.SAMPLE_RATE = std::stoull(val);
+            } catch (...) {
+                std::cerr << "Invalid SAMPLE_RATE value: " << val << std::endl;
+                return false;
+            }
+        }
+        else if (key == "BITRATE") {
+            try {
+                cfg.BITRATE = std::stoul(val);
+            } catch (...) {
+                std::cerr << "Invalid BITRATE value: " << val << std::endl;
+                return false;
+            }
+        }
+        else if (key == "AMPLITUDE") {
+            try {
+                cfg.AMPLITUDE = static_cast<int8_t>(std::stoi(val));
+            } catch (...) {
+                std::cerr << "Invalid AMPLITUDE value: " << val << std::endl;
+                return false;
+            }
+        }
+        else if (key == "FREQ_DEV") {
+            try {
+                cfg.FREQ_DEV = std::stoul(val);
+            } catch (...) {
+                std::cerr << "Invalid FREQ_DEV value: " << val << std::endl;
+                return false;
+            }
+        }
+        else if (key == "TX_GAIN") {
+            try {
+                cfg.TX_GAIN = static_cast<uint8_t>(std::stoi(val));
+            } catch (...) {
+                std::cerr << "Invalid TX_GAIN value: " << val << std::endl;
+                return false;
+            }
+        }
+        else {
+            std::cerr << "Unknown configuration key: " << key << std::endl;
+            return false;
         }
     }
 
