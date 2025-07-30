@@ -84,14 +84,18 @@ int main(int argc, char* argv[]) {
         std::string message     = input.substr(pos1 + 1, pos2 - pos1 - 1);
         std::string freq_str    = input.substr(pos2 + 1);
 
+        uint64_t capcode;
+        long frequency;
+
         try {
-            uint64_t capcode = std::stoull(capcode_str);
-            if (tinyflex::is_capcode_valid(capcode) == 0) {
+            capcode = std::stoull(capcode_str);
+            int is_long;
+            if (!is_capcode_valid(capcode, &is_long)) {
                 throw std::invalid_argument("Invalid capcode: " + capcode_str);
             }
         } catch (const std::invalid_argument& e) {
-            std::string error_msg = std::to_string(error);
-            printf("%s\n", error_msg);
+            std::string error_msg = "Invalid capcode: " + capcode_str;
+            printf("%s\n", error_msg.c_str());
 
             // Send message back to client
             send(client_fd, error_msg.c_str(), error_msg.size(), 0);
@@ -100,7 +104,7 @@ int main(int argc, char* argv[]) {
             continue;
         } catch (const std::out_of_range& e) {
             std::string error_msg = "Capcode out of range: " + capcode_str;
-            printf("%s\n", error_msg);
+            printf("%s\n", error_msg.c_str());
 
             // Send message back to client
             send(client_fd, error_msg.c_str(), error_msg.size(), 0);
@@ -110,20 +114,20 @@ int main(int argc, char* argv[]) {
         }
 
         try {
-            long frequency = std::stoul(freq_str);
+            frequency = std::stoul(freq_str);
             if (frequency < 1000000 || frequency > 6000000000) {
                 throw std::out_of_range("Frequency out of valid range: " + freq_str);
             }
         } catch (const std::invalid_argument& e) {
-            std::string error_msg = "Invalid frequency: " + std::to_string(error);
-            printf("%s\n", error_msg);
+            std::string error_msg = "Invalid frequency: " + freq_str;
+            printf("%s\n", error_msg.c_str());
             // Send message back to client
             send(client_fd, error_msg.c_str(), error_msg.size(), 0);
             close(client_fd);
             continue;
         } catch (const std::out_of_range& e) {
-            std::string error_msg = std::to_string(error);
-            printf("%s\n", error_msg);
+            std::string error_msg = "Frequency out of valid range: " + freq_str;
+            printf("%s\n", error_msg.c_str());
 
             // Send message back to client
             send(client_fd, error_msg.c_str(), error_msg.size(), 0);
@@ -131,7 +135,8 @@ int main(int argc, char* argv[]) {
             continue;
         }
 
-        printf("Received: CAPCODE=%d, MESSAGE='%s', FREQUENCY=%d\n", capcode, message.c_str(), frequency);
+        printf("Received: CAPCODE=%llu, MESSAGE='%s', FREQUENCY=%ld\n",
+               (unsigned long long)capcode, message.c_str(), frequency);
 
         // Encode message using TinyFlex
         uint8_t flex_buffer[1024];
@@ -154,7 +159,7 @@ int main(int argc, char* argv[]) {
             for (size_t i = 0; i < flex_len; ++i) {
                 printf("%02X ", flex_buffer[i]);
             }
-            
+
             printf("\n");
         }
 
@@ -164,8 +169,6 @@ int main(int argc, char* argv[]) {
             close(client_fd);
             continue;
         }
-
-        int result = 0;
 
         // Generate FSK IQ samples from FLEX buffer
         std::vector<int8_t> iq_samples = generate_fsk_iq_samples(
