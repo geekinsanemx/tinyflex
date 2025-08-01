@@ -44,7 +44,7 @@ void print_help() {
     std::cout << "  Example: echo '001122334|Hello World|925516000' | nc localhost 16175\n\n";
     std::cout << "EMR (Emergency Message Resynchronization):\n";
     std::cout << "  If this is the first message or no messages have been sent for more than\n";
-    std::cout << "  10 minutes, the server will automatically send 2 EMR messages before\n";
+    std::cout << "  10 minutes, the server will automatically send an EMR message before\n";
     std::cout << "  transmitting the actual message to ensure proper synchronization.\n\n";
 }
 
@@ -69,7 +69,7 @@ bool should_send_emr(ConnectionState& state) {
 
 void send_emr_messages(hackrf_device* device, const Config& config, bool verbose_mode) {
     if (verbose_mode) {
-        std::cout << "Sending EMR (Emergency Message Resynchronization) messages...\n";
+        std::cout << "Sending EMR (Emergency Message Resynchronization) message...\n";
     }
 
     // EMR message is typically a short synchronization burst
