@@ -1,0 +1,54 @@
+[Unit]
+Description=Grafana Alertmanager to HackRF FLEX Server Bridge
+Documentation=https://github.com/your-repo/hackrf-flex-server
+After=network.target network-online.target
+Wants=network-online.target
+Requires=network.target
+
+[Service]
+Type=simple
+User=grafana-flex
+Group=grafana-flex
+WorkingDirectory=/opt/grafana-flexserver
+ExecStart=/usr/bin/python3 /opt/grafana-flexserver/grafana_flexserver.py
+ExecReload=/bin/kill -s HUP $MAINPID
+KillMode=mixed
+KillSignal=SIGINT
+TimeoutStopSec=5
+
+# Environment file (optional)
+EnvironmentFile=-/etc/default/grafana_flexserver
+
+# Security settings
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/log /tmp
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictRealtime=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=no
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+# Restart policy
+Restart=always
+RestartSec=10
+StartLimitInterval=60
+StartLimitBurst=3
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=grafana-flexserver
+
+# Resource limits
+LimitNOFILE=4096
+LimitCORE=0
+
+[Install]
+WantedBy=multi-user.target
+Alias=grafana-flexserver.service
