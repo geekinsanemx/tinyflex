@@ -1,5 +1,6 @@
 *.o
 *.py
+!demos/grafana_flexserver/*.py
 *~
 demos/encode_file
 demos/send_ttgo
