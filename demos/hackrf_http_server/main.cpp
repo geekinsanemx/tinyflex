@@ -9,6 +9,8 @@
 #include <thread>
 #include <sys/select.h>
 #include <errno.h>
+#include <iomanip>
+#include <arpa/inet.h>
 #include "../../tinyflex.h"
 #include "include/config.hpp"
 #include "include/fsk.hpp"
@@ -24,48 +26,115 @@
 #endif
 
 void print_help() {
-    std::cout << "hackrf_http_server - FLEX paging HTTP/TCP server for HackRF\n\n";
+    std::cout << "hackrf_http_server - FLEX paging HTTP/TCP server for HackRF\n";
+    std::cout << "A dual-protocol server with comprehensive logging and AWS Lambda compatible response codes\n\n";
+
     std::cout << "USAGE:\n";
     std::cout << "  hackrf_http_server [OPTIONS]\n\n";
+
     std::cout << "OPTIONS:\n";
     std::cout << "  --help, -h     Show this help message and exit\n";
-    std::cout << "  --debug, -d    Enable debug mode (prints raw bytes, creates IQ file, skips transmission)\n";
-    std::cout << "  --verbose, -v  Enable verbose output (detailed transmission info)\n\n";
+    std::cout << "  --debug, -d    Enable debug mode (hex dumps, IQ file output, skip transmission)\n";
+    std::cout << "  --verbose, -v  Enable comprehensive pipeline logging (detailed processing info)\n\n";
+
+    std::cout << "EXIT CODES (AWS Lambda Compatible):\n";
+    std::cout << "  0  Success\n";
+    std::cout << "  1  Invalid command line arguments\n";
+    std::cout << "  2  Configuration errors\n";
+    std::cout << "  3  Network setup errors (port binding)\n";
+    std::cout << "  4  Authentication setup errors\n\n";
+
     std::cout << "CONFIGURATION:\n";
-    std::cout << "  The server reads configuration from config.ini (preferred) or falls back to\n";
-    std::cout << "  environment variables if the file doesn't exist.\n\n";
+    std::cout << "  Reads config.ini (preferred) or environment variables as fallback.\n";
+    std::cout << "  Both protocols can be independently enabled/disabled (set port to 0).\n\n";
+
     std::cout << "  Configuration parameters:\n";
     std::cout << "    BIND_ADDRESS        - IP address to bind to (default: 127.0.0.1)\n";
     std::cout << "    SERIAL_LISTEN_PORT  - TCP port for serial protocol (default: 16175, 0 = disabled)\n";
     std::cout << "    HTTP_LISTEN_PORT    - HTTP port for JSON API (default: 16180, 0 = disabled)\n";
-    std::cout << "    SAMPLE_RATE         - HackRF sample rate (default: 2000000)\n";
-    std::cout << "    BITRATE             - FSK bitrate (default: 1600)\n";
-    std::cout << "    AMPLITUDE           - Signal amplitude (default: 127)\n";
-    std::cout << "    FREQ_DEV            - Frequency deviation (default: 2400)\n";
-    std::cout << "    TX_GAIN             - HackRF TX gain in dB, 0-47 (default: 0)\n";
-    std::cout << "    DEFAULT_FREQUENCY   - Default frequency in Hz (default: 931937500)\n\n";
-    std::cout << "SERIAL PROTOCOL (TCP):\n";
-    std::cout << "  Send messages via TCP in format: {CAPCODE}|{MESSAGE}|{FREQUENCY_HZ}\n";
+    std::cout << "    SAMPLE_RATE         - HackRF sample rate (default: 2000000, min: 2M)\n";
+    std::cout << "    BITRATE             - FSK bitrate (default: 1600, min for 2FSK Flex)\n";
+    std::cout << "    AMPLITUDE           - Signal amplitude (default: 127, range: -127 to 127)\n";
+    std::cout << "    FREQ_DEV            - Frequency deviation Hz (default: 2400, ±2400Hz = 4800Hz total)\n";
+    std::cout << "    TX_GAIN             - HackRF TX gain dB (default: 0, range: 0-47)\n";
+    std::cout << "    DEFAULT_FREQUENCY   - Default frequency Hz (default: 931937500)\n\n";
+
+    std::cout << "SERIAL PROTOCOL (TCP) - Legacy Support:\n";
+    std::cout << "  Format: {CAPCODE}|{MESSAGE}|{FREQUENCY_HZ}\n";
     std::cout << "  Example: echo '001122334|Hello World|925516000' | nc localhost 16175\n\n";
-    std::cout << "HTTP PROTOCOL (JSON):\n";
-    std::cout << "  POST JSON to HTTP port with basic authentication:\n";
+
+    std::cout << "HTTP PROTOCOL (JSON API) - Modern REST API:\n";
+    std::cout << "  Endpoint: POST http://localhost:16180/\n";
+    std::cout << "  Authentication: HTTP Basic Auth (required)\n";
+    std::cout << "  Content-Type: application/json\n\n";
+
+    std::cout << "  JSON Format (all fields optional except message):\n";
     std::cout << "  {\n";
-    std::cout << "    \"capcode\": 1122334,\n";
-    std::cout << "    \"message\": \"Hello World\",\n";
-    std::cout << "    \"frequency\": 925516000  // optional, uses DEFAULT_FREQUENCY if omitted\n";
+    std::cout << "    \"capcode\": 1122334,      // optional, default: 37137\n";
+    std::cout << "    \"message\": \"Hello World\", // required\n";
+    std::cout << "    \"frequency\": 925516000   // optional, uses DEFAULT_FREQUENCY if omitted\n";
     std::cout << "  }\n\n";
+
+    std::cout << "  HTTP Response Codes (AWS Lambda Compatible):\n";
+    std::cout << "    200 OK                - Message transmitted successfully\n";
+    std::cout << "    400 Bad Request       - Invalid JSON or missing required fields\n";
+    std::cout << "    401 Unauthorized      - Authentication required/failed\n";
+    std::cout << "    405 Method Not Allowed - Only POST requests supported\n";
+    std::cout << "    500 Internal Error    - Processing/transmission failure\n\n";
+
+    std::cout << "  Examples:\n";
+    std::cout << "    # Full message with all parameters\n";
+    std::cout << "    curl -X POST http://localhost:16180/ -u admin:passw0rd \\\n";
+    std::cout << "      -H 'Content-Type: application/json' \\\n";
+    std::cout << "      -d '{\"capcode\":1122334,\"message\":\"Test\",\"frequency\":925516000}'\n\n";
+    std::cout << "    # Minimal message (uses defaults)\n";
+    std::cout << "    curl -X POST http://localhost:16180/ -u admin:passw0rd \\\n";
+    std::cout << "      -H 'Content-Type: application/json' \\\n";
+    std::cout << "      -d '{\"message\":\"Using defaults\"}'\n\n";
+
     std::cout << "AUTHENTICATION:\n";
-    std::cout << "  HTTP requests require basic authentication. Credentials are stored in ./passwords\n";
-    std::cout << "  file in htpasswd format. If the file doesn't exist, it will be created with\n";
-    std::cout << "  default credentials: admin/passw0rd\n\n";
-    std::cout << "  To add/update users, use the htpasswd tool:\n";
-    std::cout << "    htpasswd -m passwords username    # Add/update user with MD5 hash\n";
-    std::cout << "    htpasswd -B passwords username    # Add/update user with bcrypt hash\n";
-    std::cout << "    htpasswd -D passwords username    # Delete user\n\n";
+    std::cout << "  HTTP requests require basic auth. Credentials in ./passwords (htpasswd format).\n";
+    std::cout << "  Default: admin/passw0rd (auto-created if file missing)\n\n";
+
+    std::cout << "  User management:\n";
+    std::cout << "    htpasswd -B passwords username    # Add/update (bcrypt, recommended)\n";
+    std::cout << "    htpasswd -m passwords username    # Add/update (MD5, compatible)\n";
+    std::cout << "    htpasswd -D passwords username    # Delete user\n";
+    std::cout << "    htpasswd -v passwords username    # Verify password\n\n";
+
+    std::cout << "VERBOSE LOGGING:\n";
+    std::cout << "  Use --verbose for comprehensive pipeline visibility:\n";
+    std::cout << "  • HTTP client connection details (IP, port, raw request)\n";
+    std::cout << "  • Request parsing and JSON processing\n";
+    std::cout << "  • Message processing pipeline with validation\n";
+    std::cout << "  • FLEX encoding with hex dumps\n";
+    std::cout << "  • HackRF device setup and configuration\n";
+    std::cout << "  • FSK modulation parameters and sample generation\n";
+    std::cout << "  • RF transmission progress and completion\n";
+    std::cout << "  • HTTP response codes and body content\n\n";
+
+    std::cout << "DEBUG MODE:\n";
+    std::cout << "  Use --debug for signal analysis without transmission:\n";
+    std::cout << "  • Creates flexserver_output.iq file for GNU Radio analysis\n";
+    std::cout << "  • Shows raw FLEX encoding in hex format\n";
+    std::cout << "  • Displays EMR status without actual EMR transmission\n";
+    std::cout << "  • Safe for testing without HackRF device\n\n";
+
     std::cout << "EMR (Emergency Message Resynchronization):\n";
-    std::cout << "  If this is the first message or no messages have been sent for more than\n";
-    std::cout << "  10 minutes, the server will automatically send an EMR message before\n";
-    std::cout << "  transmitting the actual message to ensure proper synchronization.\n\n";
+    std::cout << "  Automatic synchronization for reliable paging:\n";
+    std::cout << "  • Sends EMR before first message or after 10+ minute gaps\n";
+    std::cout << "  • Ensures proper receiver synchronization\n";
+    std::cout << "  • EMR transmission logged in verbose mode\n\n";
+
+    std::cout << "ADVANCED FEATURES:\n";
+    std::cout << "  • Capcode validation (SHORT 18-bit / LONG 32-bit auto-detection)\n";
+    std::cout << "  • Independent protocol enable/disable (set port to 0)\n";
+    std::cout << "  • Comprehensive error handling with detailed logging\n";
+    std::cout << "  • Cloud service integration ready (standard HTTP codes)\n";
+    std::cout << "  • Real-time transmission monitoring\n\n";
+
+    std::cout << "For detailed documentation, examples, and troubleshooting:\n";
+    std::cout << "See README.md or visit the project repository.\n\n";
 }
 
 struct ConnectionState {
@@ -89,7 +158,8 @@ bool should_send_emr(ConnectionState& state) {
 
 void send_emr_messages(hackrf_device* device, const Config& config, bool verbose_mode) {
     if (verbose_mode) {
-        std::cout << "Sending EMR (Emergency Message Resynchronization) message...\n";
+        std::cout << "EMR Transmission:\n";
+        std::cout << "  Status: STARTING EMR (Emergency Message Resynchronization)...\n";
     }
 
     // EMR message is typically a short synchronization burst
@@ -106,25 +176,145 @@ void send_emr_messages(hackrf_device* device, const Config& config, bool verbose
     );
 
     if (verbose_mode) {
-        std::cout << "Transmitting EMR message...\n";
+        std::cout << "  EMR IQ samples: " << emr_iq_samples.size() / 2 << " pairs\n";
+        std::cout << "  Status: TRANSMITTING EMR...\n";
     }
 
     transmit_hackrf(device, emr_iq_samples);
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
     if (verbose_mode) {
-        std::cout << "EMR transmission complete.\n";
+        std::cout << "  Status: EMR COMPLETED\n";
     }
+}
+
+void log_message_processing_start(uint64_t capcode, const std::string& message, uint64_t frequency, bool verbose_mode) {
+    if (!verbose_mode) return;
+
+    std::cout << "=== Message Processing Started ===\n";
+    std::cout << "Input Parameters:\n";
+    std::cout << "  CAPCODE: " << capcode << "\n";
+    std::cout << "  MESSAGE: '" << message << "' (" << message.length() << " characters)\n";
+    std::cout << "  FREQUENCY: " << frequency << " Hz (" << std::fixed << std::setprecision(6)
+              << (frequency / 1000000.0) << " MHz)\n\n";
+}
+
+void log_capcode_validation(uint64_t capcode, bool verbose_mode) {
+    if (!verbose_mode) return;
+
+    int is_long;
+    bool valid = is_capcode_valid(capcode, &is_long);
+
+    std::cout << "Capcode Validation:\n";
+    std::cout << "  Capcode: " << capcode << " is " << (is_long ? "LONG (32-bit)" : "SHORT (18-bit)") << "\n";
+    std::cout << "  Status: " << (valid ? "VALID" : "INVALID") << "\n\n";
+}
+
+void log_flex_encoding(const uint8_t* flex_buffer, size_t flex_len, const std::string& message, bool verbose_mode) {
+    if (!verbose_mode) return;
+
+    std::cout << "FLEX Encoding:\n";
+    std::cout << "  Input message length: " << message.length() << " bytes\n";
+    std::cout << "  Buffer size: 1024 bytes\n";
+    std::cout << "  Encoded length: " << flex_len << " bytes\n";
+    std::cout << "  Encoding status: SUCCESS\n";
+    std::cout << "  Encoded FLEX data: ";
+
+    // Print ALL bytes in hex format (removed the 24-line limit)
+    for (size_t i = 0; i < flex_len; ++i) {
+        if (i > 0 && i % 16 == 0) {
+            std::cout << "\n                     ";
+        }
+        std::cout << std::hex << std::uppercase << std::setfill('0') << std::setw(2)
+                  << static_cast<int>(flex_buffer[i]) << " ";
+    }
+    std::cout << std::dec << "\n\n";
+}
+
+void log_binary_analysis(size_t flex_len, int bitrate, bool verbose_mode) {
+    if (!verbose_mode) return;
+
+    size_t total_bits = flex_len * 8;
+    double transmission_time = (double)total_bits / bitrate * 1000; // in ms
+
+    std::cout << "Binary Analysis:\n";
+    std::cout << "  Total bits to transmit: " << total_bits << "\n";
+    std::cout << "  Estimated transmission time: " << std::fixed << std::setprecision(2)
+              << transmission_time << " ms\n\n";
+}
+
+void log_hackrf_setup(uint64_t frequency, uint32_t sample_rate, uint8_t tx_gain, bool verbose_mode) {
+    if (!verbose_mode) return;
+
+    std::cout << "HackRF Setup:\n";
+    std::cout << "  Target frequency: " << frequency << " Hz (" << std::fixed << std::setprecision(6)
+              << (frequency / 1000000.0) << " MHz)\n";
+    std::cout << "  Sample rate: " << sample_rate << " Hz (" << (sample_rate / 1000000.0) << " MSPS)\n";
+    std::cout << "  TX gain: " << static_cast<int>(tx_gain) << " dB\n";
+    std::cout << "  HackRF device: READY\n\n";
+}
+
+void log_fsk_modulation(const std::vector<int8_t>& iq_samples, const Config& config, bool verbose_mode) {
+    if (!verbose_mode) return;
+
+    double samples_per_bit = (double)config.SAMPLE_RATE / config.BITRATE;
+    double sample_duration = (iq_samples.size() / 2.0) / config.SAMPLE_RATE * 1000; // in ms
+
+    std::cout << "FSK Modulation:\n";
+    std::cout << "  Bitrate: " << config.BITRATE << " bps\n";
+    std::cout << "  Samples per bit: " << std::fixed << std::setprecision(2) << samples_per_bit << "\n";
+    std::cout << "  Frequency deviation: ±" << config.FREQ_DEV << " Hz\n";
+    std::cout << "  Amplitude: " << static_cast<int>(config.AMPLITUDE) << " ("
+              << std::setprecision(1) << (static_cast<int>(config.AMPLITUDE) / 127.0 * 100) << "%)\n";
+    std::cout << "  Generated IQ samples: " << iq_samples.size() << " (" << (iq_samples.size() / 2) << " I/Q pairs)\n";
+    std::cout << "  Sample duration: " << std::setprecision(2) << sample_duration << " ms\n";
+
+    // Show first 10 I/Q pairs
+    std::cout << "  First 10 I/Q pairs: ";
+    for (size_t i = 0; i < std::min(size_t(20), iq_samples.size()); i += 2) {
+        std::cout << "(" << static_cast<int>(iq_samples[i]) << "," << static_cast<int>(iq_samples[i+1]) << ") ";
+        if (i >= 18) break;
+    }
+    std::cout << "\n\n";
+}
+
+void log_file_output(const std::string& filename, size_t sample_count, bool debug_mode, bool verbose_mode) {
+    if (!verbose_mode) return;
+
+    std::cout << "File Output:\n";
+    if (debug_mode) {
+        std::cout << "Wrote " << sample_count << " IQ samples to " << filename << "\n";
+        std::cout << "  IQ file: SUCCESS (" << filename << ")\n\n";
+    } else {
+        std::cout << "  IQ file: SKIPPED (not in debug mode)\n\n";
+    }
+}
+
+void log_rf_transmission_start(bool debug_mode, bool verbose_mode) {
+    if (!verbose_mode) return;
+
+    std::cout << "RF Transmission:\n";
+    if (debug_mode) {
+        std::cout << "  Status: SKIPPED (debug mode active)\n";
+    } else {
+        std::cout << "  Status: STARTING...\n";
+    }
+}
+
+void log_rf_transmission_complete(bool debug_mode, bool verbose_mode) {
+    if (!verbose_mode) return;
+
+    if (!debug_mode) {
+        std::cout << "  Status: COMPLETED\n";
+    }
+    std::cout << "=== Message Processing Completed ===\n\n";
 }
 
 bool process_message(uint64_t capcode, const std::string& message, uint64_t frequency,
                     ConnectionState& conn_state, const Config& config,
                     bool debug_mode, bool verbose_mode) {
 
-    if (verbose_mode) {
-        printf("Processing message - CAPCODE=%llu, MESSAGE='%s', FREQUENCY=%llu Hz\n",
-               (unsigned long long)capcode, message.c_str(), (unsigned long long)frequency);
-    }
+    log_message_processing_start(capcode, message, frequency, verbose_mode);
 
     // Validate capcode
     int is_long;
@@ -132,6 +322,7 @@ bool process_message(uint64_t capcode, const std::string& message, uint64_t freq
         std::cerr << "Invalid capcode: " << capcode << std::endl;
         return false;
     }
+    log_capcode_validation(capcode, verbose_mode);
 
     // Validate frequency
     if (frequency < 1000000 || frequency > 6000000000) {
@@ -147,27 +338,25 @@ bool process_message(uint64_t capcode, const std::string& message, uint64_t freq
         std::cerr << "Error encoding message: " << error << std::endl;
         return false;
     }
-
-    if (debug_mode || verbose_mode) {
-        printf("Encoded FLEX (%zu bytes): ", flex_len);
-        for (size_t i = 0; i < flex_len; ++i) {
-            printf("%02X ", flex_buffer[i]);
-        }
-        printf("\n");
-    }
+    log_flex_encoding(flex_buffer, flex_len, message, verbose_mode);
+    log_binary_analysis(flex_len, config.BITRATE, verbose_mode);
 
     // --- HackRF transmitter setup ---
     hackrf_device* device = setup_hackrf(frequency, config.SAMPLE_RATE, config.TX_GAIN);
     if (!device) {
         return false;
     }
+    log_hackrf_setup(frequency, config.SAMPLE_RATE, config.TX_GAIN, verbose_mode);
 
     // Check if we need to send EMR messages
     bool need_emr = should_send_emr(conn_state);
     if (need_emr && !debug_mode) {
         send_emr_messages(device, config, verbose_mode);
     } else if (need_emr && debug_mode) {
-        std::cout << "Debug mode: Would send EMR messages here\n";
+        if (verbose_mode) {
+            std::cout << "EMR Transmission:\n";
+            std::cout << "  Status: SKIPPED (debug mode active)\n\n";
+        }
     }
 
     // Generate FSK IQ samples from FLEX buffer
@@ -179,29 +368,24 @@ bool process_message(uint64_t capcode, const std::string& message, uint64_t freq
         config.AMPLITUDE,
         config.FREQ_DEV
     );
-
-    if (debug_mode || verbose_mode) {
-        printf("Generated %zu IQ samples for transmission\n", iq_samples.size() / 2);
-    }
+    log_fsk_modulation(iq_samples, config, verbose_mode);
 
     // --- Write IQ samples to file for analysis (debug mode) ---
     if (debug_mode) {
         write_iq_file("flexserver_output.iq", iq_samples);
     }
+    log_file_output("flexserver_output.iq", iq_samples.size() / 2, debug_mode, verbose_mode);
 
     // --- Transmit IQ samples ---
+    log_rf_transmission_start(debug_mode, verbose_mode);
     if (!debug_mode) {
-        if (verbose_mode) {
-            std::cout << "Starting transmission...\n";
-        }
         transmit_hackrf(device, iq_samples);
 
         // Update connection state
         conn_state.last_transmission = std::chrono::steady_clock::now();
         conn_state.first_message = false;
-    } else {
-        printf("Debug mode active, skipping HackRF transmission.\n");
     }
+    log_rf_transmission_complete(debug_mode, verbose_mode);
 
     close_hackrf(device);
     return true;
@@ -258,53 +442,208 @@ void handle_serial_client(int client_fd, ConnectionState& conn_state, const Conf
 void handle_http_client(int client_fd, const std::map<std::string, std::string>& passwords,
                        ConnectionState& conn_state, const Config& config,
                        bool debug_mode, bool verbose_mode) {
-    char buffer[4096] = {0};
+    char buffer[8192] = {0}; // Increased buffer size
+    struct sockaddr_in client_addr;
+    socklen_t client_len = sizeof(client_addr);
 
-    // Read HTTP request
-    int valRead = read(client_fd, buffer, sizeof(buffer) - 1);
-    if (valRead <= 0) {
+    // Get client info for logging
+    std::string client_ip = "unknown";
+    int client_port = 0;
+    if (getpeername(client_fd, (struct sockaddr*)&client_addr, &client_len) == 0) {
+        client_ip = inet_ntoa(client_addr.sin_addr);
+        client_port = ntohs(client_addr.sin_port);
+    }
+
+    // Enhanced HTTP request reading with proper handling of body
+    std::string full_request;
+    int total_read = 0;
+    int content_length = 0;
+    bool headers_complete = false;
+    size_t headers_end_pos = 0;
+
+    // Read initial chunk
+    int initial_read = read(client_fd, buffer, sizeof(buffer) - 1);
+    if (initial_read <= 0) {
+        if (verbose_mode) {
+            std::cout << "Failed to read initial HTTP data from client\n";
+        }
         send_http_response(client_fd, 400, "Bad Request",
-                          "{\"error\":\"Failed to read request\",\"code\":400}", "application/json");
+                          "{\"error\":\"Failed to read request\",\"code\":400}",
+                          "application/json", verbose_mode);
         return;
     }
 
-    buffer[valRead] = '\0';
-    HttpRequest request = parse_http_request(std::string(buffer));
+    buffer[initial_read] = '\0';
+    full_request = std::string(buffer, initial_read);
+    total_read = initial_read;
+
+    if (verbose_mode) {
+        std::cout << "\n=== HTTP Client Connected ===\n";
+        std::cout << "Client IP: " << client_ip << "\n";
+        std::cout << "Client Port: " << client_port << "\n";
+        std::cout << "Initial read: " << initial_read << " bytes\n";
+        std::cout << "Buffer content: '" << std::string(buffer, initial_read) << "'\n";
+    }
+
+    // Check if headers are complete (look for \r\n\r\n)
+    headers_end_pos = full_request.find("\r\n\r\n");
+    if (headers_end_pos != std::string::npos) {
+        headers_complete = true;
+        headers_end_pos += 4; // Include the \r\n\r\n
+    }
+
+    // Parse headers to get Content-Length
+    std::istringstream header_stream(full_request);
+    std::string line;
+    while (std::getline(header_stream, line) && !line.empty() && line != "\r") {
+        line.erase(line.find_last_not_of("\r\n") + 1); // Remove trailing \r\n
+        if (line.empty()) break;
+
+        std::transform(line.begin(), line.end(), line.begin(), ::tolower);
+        if (line.find("content-length:") == 0) {
+            size_t colon_pos = line.find(':');
+            if (colon_pos != std::string::npos) {
+                std::string length_str = line.substr(colon_pos + 1);
+                length_str.erase(0, length_str.find_first_not_of(" \t"));
+                try {
+                    content_length = std::stoi(length_str);
+                    if (verbose_mode) {
+                        std::cout << "Found Content-Length: " << content_length << "\n";
+                    }
+                } catch (...) {
+                    if (verbose_mode) {
+                        std::cout << "Failed to parse Content-Length: '" << length_str << "'\n";
+                    }
+                }
+            }
+            break;
+        }
+    }
+
+    // If we have content-length, make sure we read the complete body
+    if (content_length > 0 && headers_complete) {
+        size_t body_start = headers_end_pos;
+        int body_received = full_request.length() - body_start;
+
+        if (verbose_mode) {
+            std::cout << "Headers end at position: " << headers_end_pos << "\n";
+            std::cout << "Body start at position: " << body_start << "\n";
+            std::cout << "Body bytes received so far: " << body_received << "\n";
+            std::cout << "Expected body length: " << content_length << "\n";
+        }
+
+        // Read more data if needed
+        while (body_received < content_length) {
+            int additional_read = read(client_fd, buffer, sizeof(buffer) - 1);
+            if (additional_read <= 0) {
+                if (verbose_mode) {
+                    std::cout << "Failed to read additional body data\n";
+                }
+                break;
+            }
+
+            buffer[additional_read] = '\0';
+            full_request += std::string(buffer, additional_read);
+            body_received += additional_read;
+            total_read += additional_read;
+
+            if (verbose_mode) {
+                std::cout << "Read additional " << additional_read << " bytes\n";
+                std::cout << "Total body received: " << body_received << "/" << content_length << "\n";
+            }
+        }
+    }
+
+    if (verbose_mode) {
+        std::cout << "Final HTTP Request (" << full_request.length() << " bytes):\n";
+        std::cout << "---\n" << full_request << "---\n";
+
+        // Analyze the request structure
+        std::cout << "Request Analysis:\n";
+        std::cout << "  Total length: " << full_request.length() << " bytes\n";
+        std::cout << "  Contains \\r\\n\\r\\n: " << (full_request.find("\r\n\r\n") != std::string::npos ? "YES" : "NO") << "\n";
+        std::cout << "  Headers end position: " << headers_end_pos << "\n";
+
+        if (headers_end_pos < full_request.length()) {
+            std::string body_part = full_request.substr(headers_end_pos);
+            std::cout << "  Body part length: " << body_part.length() << " bytes\n";
+            std::cout << "  Body content: '" << body_part << "'\n";
+        } else {
+            std::cout << "  Body part: NONE FOUND\n";
+        }
+    }
+
+    HttpRequest request = parse_http_request(full_request);
+    log_parsed_request(request, verbose_mode);
+
+    // Additional diagnostics for empty body
+    if (request.body.empty() && content_length > 0) {
+        if (verbose_mode) {
+            std::cout << "*** WARNING: Body is empty but Content-Length is " << content_length << " ***\n";
+            std::cout << "*** This indicates an HTTP parsing issue ***\n";
+
+            // Try to manually extract body
+            size_t manual_headers_end = full_request.find("\r\n\r\n");
+            if (manual_headers_end != std::string::npos) {
+                std::string manual_body = full_request.substr(manual_headers_end + 4);
+                std::cout << "Manual body extraction: '" << manual_body << "'\n";
+                std::cout << "Manual body length: " << manual_body.length() << "\n";
+
+                // Override the parsed body if manual extraction worked
+                if (!manual_body.empty() && request.body.empty()) {
+                    request.body = manual_body;
+                    std::cout << "*** Using manually extracted body ***\n";
+                }
+            }
+        }
+    }
 
     // Check if it's a POST request
     if (request.method != "POST") {
         send_http_response(client_fd, 405, "Method Not Allowed",
-                          "{\"error\":\"Only POST method is allowed\",\"code\":405}", "application/json");
+                          "{\"error\":\"Only POST method is allowed\",\"code\":405}",
+                          "application/json", verbose_mode);
         return;
     }
 
     // Check authentication
     auto auth_it = request.headers.find("authorization");
     if (auth_it == request.headers.end() || !authenticate_user(auth_it->second, passwords)) {
-        send_unauthorized_response(client_fd);
+        send_unauthorized_response(client_fd, verbose_mode);
         return;
     }
 
     // Parse JSON message
     JsonMessage json_msg = parse_json_message(request.body);
     if (!json_msg.valid) {
+        if (verbose_mode) {
+            std::cout << "*** JSON MESSAGE PARSING FAILED ***\n";
+            std::cout << "Body was: '" << request.body << "'\n";
+            std::cout << "Body length: " << request.body.length() << "\n";
+        }
         send_http_response(client_fd, 400, "Bad Request",
                           "{\"error\":\"Invalid JSON format or missing required fields\",\"code\":400}",
-                          "application/json");
+                          "application/json", verbose_mode);
         return;
     }
+
+    log_json_processing(json_msg, config.DEFAULT_FREQUENCY, verbose_mode);
 
     // Use default frequency if not provided
     uint64_t frequency = json_msg.frequency > 0 ? json_msg.frequency : config.DEFAULT_FREQUENCY;
 
     if (process_message(json_msg.capcode, json_msg.message, frequency, conn_state, config, debug_mode, verbose_mode)) {
         send_http_response(client_fd, 200, "OK",
-                          "{\"status\":\"success\",\"message\":\"Message sent successfully\"}",
-                          "application/json");
+                          "{\"status\":\"success\",\"message\":\"Message transmitted successfully\"}",
+                          "application/json", verbose_mode);
+
+        if (verbose_mode) {
+            std::cout << "HTTP client disconnected.\n\n";
+        }
     } else {
         send_http_response(client_fd, 500, "Internal Server Error",
                           "{\"error\":\"Failed to process message\",\"code\":500}",
-                          "application/json");
+                          "application/json", verbose_mode);
     }
 }
 
@@ -372,7 +711,7 @@ int main(int argc, char* argv[]) {
 
     if (!config_loaded) {
         std::cerr << "Failed to load configuration!" << std::endl;
-        return 1;
+        return 2;
     }
 
     if (verbose_mode) {
@@ -392,7 +731,7 @@ int main(int argc, char* argv[]) {
     if (config.SERIAL_LISTEN_PORT == 0 && config.HTTP_LISTEN_PORT == 0) {
         std::cerr << "Error: Both SERIAL_LISTEN_PORT and HTTP_LISTEN_PORT are disabled (set to 0)!" << std::endl;
         std::cerr << "At least one port must be enabled." << std::endl;
-        return 1;
+        return 2; // Use exit code 2 for configuration errors
     }
 
     // Setup servers
@@ -404,7 +743,7 @@ int main(int argc, char* argv[]) {
         serial_server_fd = setup_tcp_server(config.SERIAL_LISTEN_PORT, serial_address, config.BIND_ADDRESS);
         if (serial_server_fd < 0) {
             std::cerr << "Failed to setup serial TCP server" << std::endl;
-            return 1;
+            return 3; // Use exit code 3 for network setup errors
         }
         printf("Serial TCP server listening on %s:%d\n", config.BIND_ADDRESS.c_str(), config.SERIAL_LISTEN_PORT);
     } else {
@@ -416,7 +755,7 @@ int main(int argc, char* argv[]) {
         if (http_server_fd < 0) {
             if (serial_server_fd >= 0) close(serial_server_fd);
             std::cerr << "Failed to setup HTTP server" << std::endl;
-            return 1;
+            return 3; // Use exit code 3 for network setup errors
         }
         printf("HTTP server listening on %s:%d\n", config.BIND_ADDRESS.c_str(), config.HTTP_LISTEN_PORT);
     } else {
@@ -435,7 +774,7 @@ int main(int argc, char* argv[]) {
                 std::cerr << "Failed to create default passwords file!" << std::endl;
                 if (serial_server_fd >= 0) close(serial_server_fd);
                 if (http_server_fd >= 0) close(http_server_fd);
-                return 1;
+                return 4; // Use exit code 4 for authentication setup errors
             }
         }
         if (verbose_mode) {
@@ -492,18 +831,12 @@ int main(int argc, char* argv[]) {
             socklen_t http_addrlen = sizeof(http_address);
             int client_fd = accept(http_server_fd, (struct sockaddr *)&http_address, &http_addrlen);
             if (client_fd >= 0) {
-                if (verbose_mode) {
-                    std::cout << "HTTP client connected from " << inet_ntoa(http_address.sin_addr) << "\n";
-                } else {
+                if (!verbose_mode) {
                     printf("HTTP client connected!\n");
                 }
 
                 handle_http_client(client_fd, passwords, conn_state, config, debug_mode, verbose_mode);
                 close(client_fd);
-
-                if (verbose_mode) {
-                    std::cout << "HTTP client connection closed.\n";
-                }
             }
         }
     }

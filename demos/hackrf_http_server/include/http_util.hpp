@@ -9,6 +9,7 @@
 #include <unistd.h>
 #include <algorithm>
 #include <crypt.h>
+#include <iomanip>
 
 struct HttpRequest {
     std::string method;
@@ -55,6 +56,69 @@ inline std::string trim(const std::string& str) {
     return str.substr(start, end - start + 1);
 }
 
+inline void log_http_request(const std::string& request, const std::string& client_ip, int client_port, bool verbose_mode) {
+    if (!verbose_mode) return;
+
+    std::cout << "\n=== HTTP Client Connected ===\n";
+    std::cout << "Client IP: " << client_ip << "\n";
+    std::cout << "Client Port: " << client_port << "\n";
+    std::cout << "Raw HTTP Request (" << request.length() << " bytes):\n";
+    std::cout << "---\n" << request << "---\n";
+}
+
+inline void log_parsed_request(const HttpRequest& req, bool verbose_mode) {
+    if (!verbose_mode) return;
+
+    std::cout << "Parsed HTTP Request:\n";
+    std::cout << "  Method: " << req.method << "\n";
+    std::cout << "  Path: " << req.path << "\n";
+    std::cout << "  Version: " << req.version << "\n";
+
+    // Log ALL headers in verbose mode
+    std::cout << "  Headers:\n";
+    for (const auto& header : req.headers) {
+        std::cout << "    " << header.first << ": " << header.second << "\n";
+    }
+
+    if (!req.body.empty()) {
+        std::cout << "  Body Length: " << req.body.length() << " bytes\n";
+        std::cout << "  Body Content: " << req.body << "\n";
+
+        // Additional body analysis
+        std::cout << "  Body Analysis:\n";
+        std::cout << "    First char: '" << (req.body.empty() ? "EMPTY" : std::string(1, req.body[0])) << "' (ASCII: "
+                  << (req.body.empty() ? 0 : static_cast<int>(req.body[0])) << ")\n";
+        std::cout << "    Last char: '" << (req.body.empty() ? "EMPTY" : std::string(1, req.body.back())) << "' (ASCII: "
+                  << (req.body.empty() ? 0 : static_cast<int>(req.body.back())) << ")\n";
+        std::cout << "    Contains '{': " << (req.body.find('{') != std::string::npos ? "YES" : "NO") << "\n";
+        std::cout << "    Contains '}': " << (req.body.find('}') != std::string::npos ? "YES" : "NO") << "\n";
+        std::cout << "    Contains 'message': " << (req.body.find("message") != std::string::npos ? "YES" : "NO") << "\n";
+    } else {
+        std::cout << "  Body: EMPTY\n";
+    }
+    std::cout << std::endl;
+}
+
+inline void log_json_processing(const JsonMessage& msg, uint64_t default_freq, bool verbose_mode) {
+    if (!verbose_mode) return;
+
+    std::cout << "=== JSON Message Processing ===\n";
+    std::cout << "Message Data Received:\n";
+    std::cout << "  Message: '" << msg.message << "'\n";
+    std::cout << "  Capcode: " << msg.capcode;
+    if (msg.capcode == 37137) std::cout << " (default)";
+    std::cout << "\n";
+
+    uint64_t freq = msg.frequency > 0 ? msg.frequency : default_freq;
+    std::cout << "  Frequency: " << freq << " Hz (" << std::fixed << std::setprecision(3)
+              << (freq / 1000000.0) << " MHz)";
+    if (msg.frequency == 0 || msg.frequency == default_freq) std::cout << " (default)";
+    std::cout << "\n";
+
+    std::cout << "  Final Message: '" << msg.message << "'\n";
+    std::cout << "  JSON Valid: " << (msg.valid ? "YES" : "NO") << "\n\n";
+}
+
 inline HttpRequest parse_http_request(const std::string& request) {
     HttpRequest req;
 
@@ -95,27 +159,52 @@ inline JsonMessage parse_json_message(const std::string& json) {
     JsonMessage msg;
     msg.valid = false;
     msg.frequency = 0; // Will use default if not provided
+    msg.capcode = 37137; // Default capcode
+    msg.message = ""; // Initialize message
+
+    std::cout << "=== JSON Parsing Debug ===\n";
+    std::cout << "Input JSON Length: " << json.length() << " bytes\n";
+    std::cout << "Input JSON Content: '" << json << "'\n";
+
+    // Check if JSON is empty or whitespace only
+    std::string trimmed_json = trim(json);
+    if (trimmed_json.empty()) {
+        std::cout << "JSON Parsing Error: Empty JSON after trimming\n";
+        return msg;
+    }
+
+    std::cout << "Trimmed JSON: '" << trimmed_json << "'\n";
 
     // Simple JSON parsing (for production use a proper JSON library)
     size_t capcode_pos = json.find("\"capcode\"");
     size_t message_pos = json.find("\"message\"");
     size_t freq_pos = json.find("\"frequency\"");
 
-    if (capcode_pos == std::string::npos || message_pos == std::string::npos) {
+    std::cout << "JSON Field Positions:\n";
+    std::cout << "  capcode position: " << (capcode_pos != std::string::npos ? std::to_string(capcode_pos) : "NOT_FOUND") << "\n";
+    std::cout << "  message position: " << (message_pos != std::string::npos ? std::to_string(message_pos) : "NOT_FOUND") << "\n";
+    std::cout << "  frequency position: " << (freq_pos != std::string::npos ? std::to_string(freq_pos) : "NOT_FOUND") << "\n";
+
+    if (message_pos == std::string::npos) {
+        std::cout << "JSON Parsing Error: 'message' field not found\n";
         return msg;
     }
 
-    // Extract capcode
-    size_t capcode_colon = json.find(':', capcode_pos);
-    if (capcode_colon != std::string::npos) {
-        size_t capcode_start = json.find_first_not_of(" \t", capcode_colon + 1);
-        size_t capcode_end = json.find_first_of(",}", capcode_start);
-        if (capcode_start != std::string::npos && capcode_end != std::string::npos) {
-            std::string capcode_str = json.substr(capcode_start, capcode_end - capcode_start);
-            try {
-                msg.capcode = std::stoull(capcode_str);
-            } catch (...) {
-                return msg;
+    // Extract capcode (optional)
+    if (capcode_pos != std::string::npos) {
+        size_t capcode_colon = json.find(':', capcode_pos);
+        if (capcode_colon != std::string::npos) {
+            size_t capcode_start = json.find_first_not_of(" \t", capcode_colon + 1);
+            size_t capcode_end = json.find_first_of(",}", capcode_start);
+            if (capcode_start != std::string::npos && capcode_end != std::string::npos) {
+                std::string capcode_str = json.substr(capcode_start, capcode_end - capcode_start);
+                std::cout << "Capcode extraction: '" << capcode_str << "'\n";
+                try {
+                    msg.capcode = std::stoull(capcode_str);
+                    std::cout << "Capcode parsed successfully: " << msg.capcode << "\n";
+                } catch (const std::exception& e) {
+                    std::cout << "Capcode parsing error: " << e.what() << ", using default\n";
+                }
             }
         }
     }
@@ -128,8 +217,15 @@ inline JsonMessage parse_json_message(const std::string& json) {
             size_t msg_quote_end = json.find('"', msg_quote_start + 1);
             if (msg_quote_end != std::string::npos) {
                 msg.message = json.substr(msg_quote_start + 1, msg_quote_end - msg_quote_start - 1);
+                std::cout << "Message extraction: '" << msg.message << "'\n";
+            } else {
+                std::cout << "Message parsing error: closing quote not found\n";
             }
+        } else {
+            std::cout << "Message parsing error: opening quote not found\n";
         }
+    } else {
+        std::cout << "Message parsing error: colon after 'message' not found\n";
     }
 
     // Extract frequency (optional)
@@ -140,9 +236,12 @@ inline JsonMessage parse_json_message(const std::string& json) {
             size_t freq_end = json.find_first_of(",}", freq_start);
             if (freq_start != std::string::npos && freq_end != std::string::npos) {
                 std::string freq_str = json.substr(freq_start, freq_end - freq_start);
+                std::cout << "Frequency extraction: '" << freq_str << "'\n";
                 try {
                     msg.frequency = std::stoull(freq_str);
-                } catch (...) {
+                    std::cout << "Frequency parsed successfully: " << msg.frequency << "\n";
+                } catch (const std::exception& e) {
+                    std::cout << "Frequency parsing error: " << e.what() << ", using default\n";
                     msg.frequency = 0; // Will use default
                 }
             }
@@ -150,6 +249,10 @@ inline JsonMessage parse_json_message(const std::string& json) {
     }
 
     msg.valid = !msg.message.empty();
+    std::cout << "JSON Parsing Result: " << (msg.valid ? "VALID" : "INVALID") << "\n";
+    std::cout << "Final Message: '" << msg.message << "'\n";
+    std::cout << "=== End JSON Parsing Debug ===\n\n";
+
     return msg;
 }
 
@@ -248,7 +351,8 @@ inline bool authenticate_user(const std::string& auth_header, const std::map<std
 }
 
 inline void send_http_response(int client_fd, int status_code, const std::string& status_text,
-                              const std::string& body, const std::string& content_type = "text/plain") {
+                              const std::string& body, const std::string& content_type = "application/json",
+                              bool verbose_mode = false) {
     std::ostringstream response;
     response << "HTTP/1.1 " << status_code << " " << status_text << "\r\n";
     response << "Content-Type: " << content_type << "\r\n";
@@ -259,9 +363,15 @@ inline void send_http_response(int client_fd, int status_code, const std::string
 
     std::string response_str = response.str();
     send(client_fd, response_str.c_str(), response_str.length(), 0);
+
+    if (verbose_mode) {
+        std::cout << "HTTP Response sent:\n";
+        std::cout << "  Status: " << status_code << "\n";
+        std::cout << "  Body: " << body << "\n\n";
+    }
 }
 
-inline void send_unauthorized_response(int client_fd) {
+inline void send_unauthorized_response(int client_fd, bool verbose_mode = false) {
     std::ostringstream response;
     response << "HTTP/1.1 401 Unauthorized\r\n";
     response << "WWW-Authenticate: Basic realm=\"HackRF HTTP Server\"\r\n";
@@ -273,4 +383,10 @@ inline void send_unauthorized_response(int client_fd) {
 
     std::string response_str = response.str();
     send(client_fd, response_str.c_str(), response_str.length(), 0);
+
+    if (verbose_mode) {
+        std::cout << "HTTP Response sent:\n";
+        std::cout << "  Status: 401 Unauthorized\n";
+        std::cout << "  Body: {\"error\":\"Authentication required\",\"code\":401}\n\n";
+    }
 }
