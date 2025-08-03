@@ -237,58 +237,110 @@ Standard HTTP response codes for seamless cloud integration:
 
 ## Authentication
 
-HTTP requests require HTTP Basic Authentication. User credentials are stored in the `./passwords` file (local) or `/var/lib/hackrf-server/passwords` (system service) using htpasswd format.
+HTTP requests require HTTP Basic Authentication. The password file location is configurable via the `HTTP_AUTH_CREDENTIALS` parameter in `config.ini` or environment variables.
+
+### Password File Configuration
+
+The password file path can be specified in `config.ini`:
+
+```ini
+# Authentication Configuration
+HTTP_AUTH_CREDENTIALS=passwords              # Default: current directory
+# HTTP_AUTH_CREDENTIALS=/etc/hackrf/passwords # Absolute path
+# HTTP_AUTH_CREDENTIALS=auth/users.htpasswd   # Relative path
+```
+
+Or via environment variable:
+```bash
+export HTTP_AUTH_CREDENTIALS=/var/lib/hackrf-server/passwords
+```
 
 ### Default Credentials
 
-If the `passwords` file doesn't exist, it will be created automatically with default credentials:
+If the specified password file doesn't exist, it will be created automatically with default credentials:
 - **Username:** `admin`
 - **Password:** `passw0rd`
 
 ### Managing Users
 
-Use the `htpasswd` tool to manage user accounts:
+Use the `htpasswd` tool to manage user accounts in your configured password file:
 
 ```bash
-# For local installation
+# For custom password file location
+htpasswd -B /path/to/your/passwords username
+
+# For default location (current directory)
 htpasswd -B passwords username
 
 # For system service installation
 sudo -u hackrf htpasswd -B /var/lib/hackrf-server/passwords username
 
 # Add or update a user with MD5 hash (compatible with most systems)
-htpasswd -m passwords username
+htpasswd -m /path/to/passwords username
 
 # Create new passwords file and add first user
-htpasswd -cm passwords admin
+htpasswd -cm /path/to/passwords admin
 
 # Delete a user
-htpasswd -D passwords username
+htpasswd -D /path/to/passwords username
 
 # Verify a password
-htpasswd -v passwords username
+htpasswd -v /path/to/passwords username
 
 # List users
-cut -d: -f1 passwords
+cut -d: -f1 /path/to/passwords
 ```
+
+### Password File Formats
+
+The server supports multiple htpasswd hash formats:
+- **bcrypt** (`-B`): Recommended for security
+- **SHA512** (`-6`): Good security, widely supported
+- **MD5** (`-m`): Maximum compatibility
+- **Plain text**: For testing only (not recommended)
 
 ### Authentication Examples
 
 ```bash
 # Create/update user with bcrypt (recommended)
-htpasswd -B passwords newuser
+htpasswd -B ./auth/passwords newuser
 
 # Create/update user with MD5 (compatible)
-htpasswd -m passwords newuser
+htpasswd -m /etc/hackrf/passwords newuser
 
-# For system service
-sudo -u hackrf htpasswd -B /var/lib/hackrf-server/passwords newuser
+# For system service with custom location
+sudo mkdir -p /etc/hackrf
+sudo htpasswd -c -B /etc/hackrf/passwords admin
+# Update config.ini: HTTP_AUTH_CREDENTIALS=/etc/hackrf/passwords
 
 # Verify password
-htpasswd -v passwords admin
+htpasswd -v /path/to/passwords admin
 
 # Delete user
-htpasswd -D passwords olduser
+htpasswd -D /path/to/passwords olduser
+```
+
+### Security Considerations
+
+- **File Permissions**: Ensure password files have appropriate permissions (e.g., `chmod 600`)
+- **Secure Locations**: Store password files in secure directories
+- **Strong Passwords**: Use complex passwords for production environments
+- **Regular Updates**: Rotate passwords periodically
+
+Example secure setup:
+```bash
+# Create secure password file location
+sudo mkdir -p /etc/hackrf
+sudo touch /etc/hackrf/passwords
+sudo chmod 600 /etc/hackrf/passwords
+sudo chown hackrf:hackrf /etc/hackrf/passwords
+
+# Add users with strong passwords
+sudo htpasswd -B /etc/hackrf/passwords admin
+sudo htpasswd -B /etc/hackrf/passwords operator
+
+# Update config.ini
+echo "HTTP_AUTH_CREDENTIALS=/etc/hackrf/passwords" >> config.ini
 ```
 
 ## Usage Examples

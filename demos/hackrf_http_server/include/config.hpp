@@ -2,131 +2,85 @@
 #include <string>
 #include <fstream>
 #include <iostream>
+#include <cstdlib>
 
 struct Config {
-    std::string BIND_ADDRESS        = "127.0.0.1";
-    u_int16_t   SERIAL_LISTEN_PORT  = 16175;
-    u_int16_t   HTTP_LISTEN_PORT    = 16180;
-    u_int64_t   SAMPLE_RATE         = 2000000;
-    u_int16_t   BITRATE             = 1600;
-    int8_t      AMPLITUDE           = 127;
-    u_int32_t   FREQ_DEV            = 2400;
-    u_int8_t    TX_GAIN             = 0;
-    u_int64_t   DEFAULT_FREQUENCY   = 931937500;
+    std::string BIND_ADDRESS;
+    uint32_t SERIAL_LISTEN_PORT;
+    uint32_t HTTP_LISTEN_PORT;
+    uint64_t SAMPLE_RATE;
+    uint32_t BITRATE;
+    int8_t AMPLITUDE;
+    uint32_t FREQ_DEV;
+    uint8_t TX_GAIN;
+    uint64_t DEFAULT_FREQUENCY;
+    std::string HTTP_AUTH_CREDENTIALS; // New field for password file path
 };
 
-inline bool load_config(const std::string& filename, Config& cfg) {
+// Helper function to trim whitespace and trailing commas
+inline std::string trim_config_value(const std::string& str) {
+    if (str.empty()) return str;
+
+    size_t start = str.find_first_not_of(" \t\r\n");
+    if (start == std::string::npos) return "";
+
+    size_t end = str.find_last_not_of(" \t\r\n,");
+    return str.substr(start, end - start + 1);
+}
+
+inline bool load_config(const std::string& filename, Config& config) {
     std::ifstream file(filename);
     if (!file.is_open()) {
         return false;
     }
 
+    // Set defaults first
+    config.BIND_ADDRESS = "127.0.0.1";
+    config.SERIAL_LISTEN_PORT = 16175;
+    config.HTTP_LISTEN_PORT = 16180;
+    config.SAMPLE_RATE = 2000000;
+    config.BITRATE = 1600;
+    config.AMPLITUDE = 127;
+    config.FREQ_DEV = 2400;
+    config.TX_GAIN = 0;
+    config.DEFAULT_FREQUENCY = 931937500;
+    config.HTTP_AUTH_CREDENTIALS = "passwords"; // Default password file
+
     std::string line;
     while (std::getline(file, line)) {
-        // Remove comments
-        auto comment = line.find('#');
-        if (comment != std::string::npos) {
-            line = line.substr(0, comment);
-        }
-
-        size_t eq = line.find('=');
-        if (eq == std::string::npos) {
+        // Skip comments and empty lines
+        if (line.empty() || line[0] == '#') {
             continue;
         }
 
-        std::string key = line.substr(0, eq);
-        std::string val = line.substr(eq + 1);
-
-        // Trim whitespace
-        key.erase(0, key.find_first_not_of(" \t"));
-        key.erase(key.find_last_not_of(" \t") + 1);
-        val.erase(0, val.find_first_not_of(" \t"));
-        val.erase(val.find_last_not_of(" \t") + 1);
-
-        // Remove trailing commas from values
-        if (!val.empty() && val.back() == ',') {
-            val.pop_back();
+        size_t equals = line.find('=');
+        if (equals == std::string::npos) {
+            continue;
         }
+
+        std::string key = trim_config_value(line.substr(0, equals));
+        std::string value = trim_config_value(line.substr(equals + 1));
 
         if (key == "BIND_ADDRESS") {
-            cfg.BIND_ADDRESS = val;
-        }
-        else if (key == "SERIAL_LISTEN_PORT") {
-            try {
-                cfg.SERIAL_LISTEN_PORT = std::stoul(val);
-            } catch (...) {
-                std::cerr << "Invalid SERIAL_LISTEN_PORT value: " << val << std::endl;
-                return false;
-            }
-        }
-        else if (key == "HTTP_LISTEN_PORT") {
-            try {
-                cfg.HTTP_LISTEN_PORT = std::stoul(val);
-            } catch (...) {
-                std::cerr << "Invalid HTTP_LISTEN_PORT value: " << val << std::endl;
-                return false;
-            }
-        }
-        else if (key == "SAMPLE_RATE") {
-            try {
-                cfg.SAMPLE_RATE = std::stoull(val);
-            } catch (...) {
-                std::cerr << "Invalid SAMPLE_RATE value: " << val << std::endl;
-                return false;
-            }
-        }
-        else if (key == "BITRATE") {
-            try {
-                cfg.BITRATE = std::stoul(val);
-            } catch (...) {
-                std::cerr << "Invalid BITRATE value: " << val << std::endl;
-                return false;
-            }
-        }
-        else if (key == "AMPLITUDE") {
-            try {
-                cfg.AMPLITUDE = static_cast<int8_t>(std::stoi(val));
-            } catch (...) {
-                std::cerr << "Invalid AMPLITUDE value: " << val << std::endl;
-                return false;
-            }
-        }
-        else if (key == "FREQ_DEV") {
-            try {
-                cfg.FREQ_DEV = std::stoul(val);
-            } catch (...) {
-                std::cerr << "Invalid FREQ_DEV value: " << val << std::endl;
-                return false;
-            }
-        }
-        else if (key == "TX_GAIN") {
-            try {
-                cfg.TX_GAIN = static_cast<uint8_t>(std::stoi(val));
-            } catch (...) {
-                std::cerr << "Invalid TX_GAIN value: " << val << std::endl;
-                return false;
-            }
-        }
-        else if (key == "DEFAULT_FREQUENCY") {
-            try {
-                cfg.DEFAULT_FREQUENCY = std::stoull(val);
-            } catch (...) {
-                std::cerr << "Invalid DEFAULT_FREQUENCY value: " << val << std::endl;
-                return false;
-            }
-        }
-        // Support legacy PORT config
-        else if (key == "PORT") {
-            try {
-                cfg.SERIAL_LISTEN_PORT = std::stoul(val);
-            } catch (...) {
-                std::cerr << "Invalid PORT value: " << val << std::endl;
-                return false;
-            }
-        }
-        else {
-            std::cerr << "Unknown configuration key: " << key << std::endl;
-            return false;
+            config.BIND_ADDRESS = value;
+        } else if (key == "SERIAL_LISTEN_PORT") {
+            config.SERIAL_LISTEN_PORT = std::stoul(value);
+        } else if (key == "HTTP_LISTEN_PORT") {
+            config.HTTP_LISTEN_PORT = std::stoul(value);
+        } else if (key == "SAMPLE_RATE") {
+            config.SAMPLE_RATE = std::stoull(value);
+        } else if (key == "BITRATE") {
+            config.BITRATE = std::stoul(value);
+        } else if (key == "AMPLITUDE") {
+            config.AMPLITUDE = static_cast<int8_t>(std::stoi(value));
+        } else if (key == "FREQ_DEV") {
+            config.FREQ_DEV = std::stoul(value);
+        } else if (key == "TX_GAIN") {
+            config.TX_GAIN = static_cast<uint8_t>(std::stoi(value));
+        } else if (key == "DEFAULT_FREQUENCY") {
+            config.DEFAULT_FREQUENCY = std::stoull(value);
+        } else if (key == "HTTP_AUTH_CREDENTIALS") {
+            config.HTTP_AUTH_CREDENTIALS = value;
         }
     }
 

@@ -52,6 +52,7 @@ void print_help() {
     std::cout << "    BIND_ADDRESS        - IP address to bind to (default: 127.0.0.1)\n";
     std::cout << "    SERIAL_LISTEN_PORT  - TCP port for serial protocol (default: 16175, 0 = disabled)\n";
     std::cout << "    HTTP_LISTEN_PORT    - HTTP port for JSON API (default: 16180, 0 = disabled)\n";
+    std::cout << "    HTTP_AUTH_CREDENTIALS - Password file path (default: passwords)\n"; // NEW
     std::cout << "    SAMPLE_RATE         - HackRF sample rate (default: 2000000, min: 2M)\n";
     std::cout << "    BITRATE             - FSK bitrate (default: 1600, min for 2FSK Flex)\n";
     std::cout << "    AMPLITUDE           - Signal amplitude (default: 127, range: -127 to 127)\n";
@@ -93,14 +94,15 @@ void print_help() {
     std::cout << "      -d '{\"capcode\":1122334,\"message\":\"Using default frequency\"}'\n\n";
 
     std::cout << "AUTHENTICATION:\n";
-    std::cout << "  HTTP requests require basic auth. Credentials in ./passwords (htpasswd format).\n";
-    std::cout << "  Default: admin/passw0rd (auto-created if file missing)\n\n";
+    std::cout << "  HTTP requests require basic auth. Credentials file specified by HTTP_AUTH_CREDENTIALS.\n";
+    std::cout << "  Default: ./passwords (htpasswd format)\n";
+    std::cout << "  Auto-created with admin/passw0rd if file missing\n\n";
 
     std::cout << "  User management:\n";
-    std::cout << "    htpasswd -B passwords username    # Add/update (bcrypt, recommended)\n";
-    std::cout << "    htpasswd -m passwords username    # Add/update (MD5, compatible)\n";
-    std::cout << "    htpasswd -D passwords username    # Delete user\n";
-    std::cout << "    htpasswd -v passwords username    # Verify password\n\n";
+    std::cout << "    htpasswd -B <password_file> username    # Add/update (bcrypt, recommended)\n";
+    std::cout << "    htpasswd -m <password_file> username    # Add/update (MD5, compatible)\n";
+    std::cout << "    htpasswd -D <password_file> username    # Delete user\n";
+    std::cout << "    htpasswd -v <password_file> username    # Verify password\n\n";
 
     std::cout << "VERBOSE LOGGING:\n";
     std::cout << "  Use --verbose for comprehensive pipeline visibility:\n";
@@ -702,6 +704,7 @@ int main(int argc, char* argv[]) {
         const char* env_serial_port = getenv("SERIAL_LISTEN_PORT");
         const char* env_http_port = getenv("HTTP_LISTEN_PORT");
         const char* env_port = getenv("PORT"); // Legacy support
+        const char* env_auth_credentials = getenv("HTTP_AUTH_CREDENTIALS"); // NEW
         const char* env_sample_rate = getenv("SAMPLE_RATE");
         const char* env_bitrate = getenv("BITRATE");
         const char* env_amplitude = getenv("AMPLITUDE");
@@ -714,6 +717,7 @@ int main(int argc, char* argv[]) {
         config.SERIAL_LISTEN_PORT = env_serial_port ? std::stoul(env_serial_port) :
                                    (env_port ? std::stoul(env_port) : 16175);
         config.HTTP_LISTEN_PORT = env_http_port ? std::stoul(env_http_port) : 16180;
+        config.HTTP_AUTH_CREDENTIALS = env_auth_credentials ? std::string(env_auth_credentials) : "passwords"; // NEW
         config.SAMPLE_RATE = env_sample_rate ? std::stoull(env_sample_rate) : 2000000;
         config.BITRATE = env_bitrate ? std::stoul(env_bitrate) : 1600;
         config.AMPLITUDE = env_amplitude ? static_cast<int8_t>(std::stoi(env_amplitude)) : 127;
@@ -734,6 +738,7 @@ int main(int argc, char* argv[]) {
         std::cout << "  BIND_ADDRESS: " << config.BIND_ADDRESS << "\n";
         std::cout << "  SERIAL_LISTEN_PORT: " << config.SERIAL_LISTEN_PORT << "\n";
         std::cout << "  HTTP_LISTEN_PORT: " << config.HTTP_LISTEN_PORT << "\n";
+        std::cout << "  HTTP_AUTH_CREDENTIALS: " << config.HTTP_AUTH_CREDENTIALS << "\n";
         std::cout << "  SAMPLE_RATE: " << config.SAMPLE_RATE << "\n";
         std::cout << "  BITRATE: " << config.BITRATE << "\n";
         std::cout << "  AMPLITUDE: " << static_cast<int>(config.AMPLITUDE) << "\n";
@@ -780,20 +785,23 @@ int main(int argc, char* argv[]) {
     // Load or create passwords file for HTTP authentication
     std::map<std::string, std::string> passwords;
     if (config.HTTP_LISTEN_PORT > 0) {
-        passwords = load_passwords("./passwords");
+        passwords = load_passwords(config.HTTP_AUTH_CREDENTIALS); // CHANGED: use config value
         if (passwords.empty()) {
-            std::cout << "Passwords file not found, creating default one..." << std::endl;
-            if (create_default_passwords("./passwords")) {
-                passwords = load_passwords("./passwords");
+            std::cout << "Passwords file not found at '" << config.HTTP_AUTH_CREDENTIALS
+                      << "', creating default one..." << std::endl;
+            if (create_default_passwords(config.HTTP_AUTH_CREDENTIALS)) { // CHANGED: use config value
+                passwords = load_passwords(config.HTTP_AUTH_CREDENTIALS); // CHANGED: use config value
             } else {
-                std::cerr << "Failed to create default passwords file!" << std::endl;
+                std::cerr << "Failed to create default passwords file at '"
+                          << config.HTTP_AUTH_CREDENTIALS << "'!" << std::endl;
                 if (serial_server_fd >= 0) close(serial_server_fd);
                 if (http_server_fd >= 0) close(http_server_fd);
                 return 4; // Use exit code 4 for authentication setup errors
             }
         }
         if (verbose_mode) {
-            std::cout << "Loaded " << passwords.size() << " user(s) from passwords file\n";
+            std::cout << "Loaded " << passwords.size() << " user(s) from '"
+                      << config.HTTP_AUTH_CREDENTIALS << "'\n";
         }
     }
 
