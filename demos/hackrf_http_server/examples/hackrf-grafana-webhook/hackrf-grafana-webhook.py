@@ -60,9 +60,14 @@ class HackrfGrafanaWebhook:
         self.app = Flask(__name__)
         self.setup_routes()
 
+        # Determine port based on SSL configuration
+        self.bind_port = self.config.getint('FLASK', 'BIND_PORT')
+        if self.config.getboolean('SSL', 'SSL_ENABLED') and self.bind_port == 8080:
+            self.bind_port = 8443  # Use 8443 for SSL by default
+
         logger.info("HackRF Grafana Webhook Service initialized")
         logger.info(f"HackRF Server: {self.config.get('HACKRF', 'HACKRF_SERVER_URL')}")
-        logger.info(f"Bind Address: {self.config.get('FLASK', 'BIND_HOST')}:{self.config.get('FLASK', 'BIND_PORT')}")
+        logger.info(f"Bind Address: {self.config.get('FLASK', 'BIND_HOST')}:{self.bind_port}")
         logger.info(f"HTTPS Enabled: {self.config.getboolean('SSL', 'SSL_ENABLED')}")
 
     def load_configuration(self, config_file: Optional[str] = None) -> configparser.ConfigParser:
@@ -81,7 +86,7 @@ class HackrfGrafanaWebhook:
             },
             'FLASK': {
                 'BIND_HOST': '0.0.0.0',
-                'BIND_PORT': '8080'
+                'BIND_PORT': '8080'  # Default to 8080
             },
             'SSL': {
                 'SSL_CERT_PATH': '',
@@ -130,7 +135,9 @@ class HackrfGrafanaWebhook:
             return jsonify({
                 'status': 'healthy',
                 'timestamp': datetime.now().isoformat(),
-                'service': 'hackrf-grafana-webhook'
+                'service': 'hackrf-grafana-webhook',
+                'port': self.bind_port,
+                'ssl': self.config.getboolean('SSL', 'SSL_ENABLED')
             })
 
         @self.app.route('/api/v1/alerts', methods=['POST'])
@@ -222,14 +229,19 @@ class HackrfGrafanaWebhook:
             alert_name = labels.get('alertname', 'Unknown Alert')
 
             # Extract capcode
-            capcode = self.config.getint('HACKRF', 'DEFAULT_CAPCODE')
+            capcode = self.config.get('HACKRF', 'DEFAULT_CAPCODE')
             for key in ['capcode', 'pager_capcode', 'flex_capcode']:
                 if key in labels:
                     try:
-                        capcode = int(labels[key])
+                        capcode = labels[key]
                         break
                     except (ValueError, TypeError):
                         pass
+            # Keep capcode as string if it has leading zeros
+            try:
+                capcode = int(capcode)
+            except ValueError:
+                pass
 
             # Extract frequency
             frequency = self.config.getint('HACKRF', 'DEFAULT_FREQUENCY')
@@ -320,7 +332,7 @@ class HackrfGrafanaWebhook:
 
         self.app.run(
             host=self.config.get('FLASK', 'BIND_HOST'),
-            port=self.config.getint('FLASK', 'BIND_PORT'),
+            port=self.bind_port,
             ssl_context=ssl_context,
             threaded=True
         )
@@ -333,7 +345,7 @@ def generate_config(output_path: str):
         'HACKRF_SERVER_URL': 'http://localhost:16180',
         'HACKRF_USERNAME': 'admin',
         'HACKRF_PASSWORD': 'passw0rd',
-        'DEFAULT_CAPCODE': '1122334',
+        'DEFAULT_CAPCODE': '0037137',
         'DEFAULT_FREQUENCY': '931937500',
         'REQUEST_TIMEOUT': '30'
     }

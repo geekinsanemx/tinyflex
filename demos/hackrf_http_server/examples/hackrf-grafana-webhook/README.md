@@ -6,7 +6,7 @@ This service bridges Grafana Alertmanager webhooks to the HackRF FLEX paging sys
 - Receives Grafana webhook alerts
 - Forwards alerts to HackRF server
 - Configurable via CLI, environment, or config file
-- HTTPS support
+- HTTPS support with automatic port switching
 - Comprehensive logging
 
 ## Installation
@@ -75,6 +75,7 @@ sudo systemctl status hackrf-grafana-webhook
 ```
 
 # Usage
+
 ## Command Line Options
 ```bash
 $ ./hackrf-grafana-webhook.py --help
@@ -123,10 +124,10 @@ Options:
 ## Grafana Alert Configuration
 Configure Grafana Alertmanager with:
 ```
-  receivers:
+receivers:
   - name: 'hackrf-pager'
     webhook_configs:
-      - url: 'http://your-server:8080/api/v1/alerts'
+      - url: 'http://your-server:8080/api/v1/alerts'  # Use 8443 for HTTPS
         send_resolved: true
 ```
 ## Security Recommendations
@@ -146,4 +147,19 @@ Test with curl:
 curl -X POST -H "Content-Type: application/json" \
   -d '[{"labels":{"alertname":"TestAlert","capcode":"12345"},"annotations":{"summary":"Test message"}}]' \
   http://localhost:8080/api/v1/alerts
+```
+
+## Generating SSL Certificates
+
+```bash
+sudo openssl req -x509 -newkey rsa:4096 \
+  -keyout /etc/ssl/private/hackrf-grafana-webhook.key \
+  -out /etc/ssl/certs/hackrf-grafana-webhook.crt \
+  -days 365 -nodes \
+  -subj "/C=US/ST=State/L=City/O=Organization/CN=grafana-flex-webhook"
+
+sudo chmod 600 /etc/ssl/private/hackrf-grafana-webhook.key
+sudo chmod 644 /etc/ssl/certs/hackrf-grafana-webhook.crt
+sudo chown hackrf:hackrf /etc/ssl/private/hackrf-grafana-webhook.key
+sudo chown hackrf:hackrf /etc/ssl/certs/hackrf-grafana-webhook.crt
 ```
