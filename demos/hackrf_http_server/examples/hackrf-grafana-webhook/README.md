@@ -113,11 +113,12 @@ Options:
 ```
 
 ## Webhook Endpoints
-  POST /api/v1/alerts - Main webhook endpoint
 
-  POST / - Alternative endpoint
+  POST `/api/v1/alerts` - Main webhook endpoint
 
-  GET /health - Health check endpoint
+  POST `/` - Alternative endpoint
+
+  GET `/health` - Health check endpoint
 
 ## Grafana Alert Configuration
 Configure Grafana Alertmanager with:
@@ -128,14 +129,11 @@ Configure Grafana Alertmanager with:
       - url: 'http://your-server:8080/api/v1/alerts'
         send_resolved: true
 ```
-## Security
-  Use HTTPS in production
-
-  Set strong passwords
-
-  Restrict firewall access to webhook port
-
-  Regularly rotate SSL certificates
+## Security Recommendations
+  - Use HTTPS in production
+  - Set strong passwords
+  - Restrict firewall access to webhook port
+  - Regularly rotate SSL certificates
 
 ## Troubleshooting
 View logs:
