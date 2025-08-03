@@ -23,13 +23,13 @@ sudo cp hackrf-grafana-webhook.py /opt/hackrf-grafana-webhook/
 sudo chmod +x /opt/hackrf-grafana-webhook/hackrf-grafana-webhook.py
 ```
 
-# Create service user
+### 3. Create service user
 ```bash
 sudo useradd -r -s /usr/sbin/nologin hackrf
 sudo chown -R hackrf:hackrf /opt/hackrf-grafana-webhook
 ```
 
-### 3. Configuration
+### 4. Configuration
 Create configuration directory and generate default config:
 ```bash
 sudo mkdir -p /etc/hackrf-grafana-webhook
@@ -37,17 +37,17 @@ sudo /opt/hackrf-grafana-webhook/hackrf-grafana-webhook.py \
   --generate-config /etc/hackrf-grafana-webhook/hackrf-grafana-webhook.cfg
 ```
 
-# Set ownership
+### 5. Set ownership
 ```bash
 sudo chown -R hackrf:hackrf /etc/hackrf-grafana-webhook
 ```
 
-# Edit configuration (if needed)
+### 6. Edit configuration (if needed)
 ```bash
 sudo nano /etc/hackrf-grafana-webhook/hackrf-grafana-webhook.cfg
 ```
 
-### 4. Systemd Service
+### 7. Systemd Service
 Install service file:
 ```bash
 sudo cp hackrf-grafana-webhook.service /etc/systemd/system/
@@ -56,18 +56,19 @@ sudo systemctl daemon-reload
 
 Environment variables (optional):
 
-# Create environment file
+Create environment file
 ```bash
 sudo nano /etc/default/hackrf-grafana-webhook
 ```
-# Add any overrides (these take priority over config file)
+
+Add any overrides (these take priority over config file)
 ```
 HACKRF_SERVER_URL=http://localhost:16180
 HACKRF_USERNAME=admin
 HACKRF_PASSWORD=your_secure_password
 ```
 
-### 5. Start Service
+### 8. Start Service
 ```bash
 sudo systemctl enable hackrf-grafana-webhook
 sudo systemctl start hackrf-grafana-webhook
