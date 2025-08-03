@@ -44,7 +44,7 @@ inline bool load_config(const std::string& filename, Config& config) {
     config.FREQ_DEV = 2400;
     config.TX_GAIN = 0;
     config.DEFAULT_FREQUENCY = 931937500;
-    config.HTTP_AUTH_CREDENTIALS = "passwords"; // Default password file
+    config.HTTP_AUTH_CREDENTIALS = "passwords";
 
     std::string line;
     while (std::getline(file, line)) {
