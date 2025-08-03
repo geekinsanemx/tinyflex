@@ -12,45 +12,7 @@ A dual-protocol FLEX paging server for HackRF that supports both legacy TCP seri
 - **Debug Mode**: Signal analysis with IQ file output without transmission
 - **Flexible Configuration**: File-based or environment variable configuration
 - **Port Control**: Independent enable/disable for each protocol
-- **System Integration**: Full systemd service support with automatic installation
-
-## Installation
-
-### Quick Install (Recommended)
-
-```bash
-# Install dependencies and build
-make deps
-make clean && make
-
-# Install to system with systemd service
-sudo make install
-
-# Create passwords file
-sudo -u hackrf htpasswd -c /var/lib/hackrf-server/passwords admin
-
-# Enable and start service
-sudo systemctl daemon-reload
-sudo systemctl enable hackrf-http-server
-sudo systemctl start hackrf-http-server
-
-# Check status
-sudo systemctl status hackrf-http-server
-sudo journalctl -u hackrf-http-server -f
-```
-
-### Manual Installation
-
-```bash
-# Install dependencies
-make deps
-
-# Build
-make clean && make
-
-# Run locally
-./hackrf_http_server --verbose
-```
+- **System Integration**: Full Systemd service support see hackrf-http-server.service file for its usage
 
 ## Configuration
 
@@ -79,6 +41,7 @@ DEFAULT_FREQUENCY=931937500
 - **BIND_ADDRESS**: IP address to bind servers to (default: 127.0.0.1)
 - **SERIAL_LISTEN_PORT**: TCP port for legacy serial protocol (default: 16175, set to 0 to disable)
 - **HTTP_LISTEN_PORT**: HTTP port for JSON API (default: 16180, set to 0 to disable)
+- **HTTP_AUTH_CREDENTIALS**: Password file path (default: passwords)
 - **SAMPLE_RATE**: HackRF sample rate (default: 2000000, minimum: 2M)
 - **BITRATE**: FSK bitrate (default: 1600, minimum for 2FSK Flex)
 - **AMPLITUDE**: Software amplification (default: 127, range: -127 to 127)
@@ -113,7 +76,7 @@ OPTIONS:
   --verbose, -v  Enable verbose output (comprehensive pipeline logging)
 ```
 
-### Exit Codes (AWS Lambda Compatible)
+### Exit Codes
 - **0**: Success
 - **1**: Invalid command line arguments
 - **2**: Configuration errors
@@ -122,22 +85,18 @@ OPTIONS:
 
 ## System Service Management
 
-After installation with `make install`, use these commands to manage the service:
+After building binary you can use `hackrf-http-server.service` systemd service file provided to make it a service
 
-```bash
-# Service control
-sudo make start-service      # Start the service
-sudo make stop-service       # Stop the service  
-sudo make restart-service    # Restart the service
-sudo make status-service     # Show service status
-sudo make enable-service     # Enable auto-start
-sudo make disable-service    # Disable auto-start
-sudo make logs              # Follow service logs
-
-# Or use systemctl directly
-sudo systemctl status hackrf-http-server
-sudo journalctl -u hackrf-http-server -f
-```
+### Installation:
+  1. Copy this file to: /etc/systemd/system/hackrf-http-server.service
+  2. Create environment file: /etc/default/hackrf_http_server
+  3. Create hackrf user: sudo useradd -r -s /bin/false -d /var/lib/hackrf-server hackrf
+  4. Create working directory: sudo mkdir -p /var/lib/hackrf-server
+  5. Set permissions: sudo chown hackrf:hackrf /var/lib/hackrf-server
+  6. Install binary: sudo cp hackrf_http_server /usr/local/bin/
+  7. Reload systemd: sudo systemctl daemon-reload
+  8. Enable service: sudo systemctl enable hackrf-http-server
+  9. Start service: sudo systemctl start hackrf-http-server
 
 ### Service Configuration
 
@@ -216,7 +175,7 @@ curl -X POST http://localhost:16180/ \
   -d '{"capcode": 911911, "message": "EMERGENCY: System down", "frequency": 931937500}'
 ```
 
-### HTTP Response Codes
+### HTTP Response Codes (compatible with AWS Lambda Response codes)
 
 Standard HTTP response codes for seamless cloud integration:
 
@@ -298,27 +257,6 @@ The server supports multiple htpasswd hash formats:
 - **SHA512** (`-6`): Good security, widely supported
 - **MD5** (`-m`): Maximum compatibility
 - **Plain text**: For testing only (not recommended)
-
-### Authentication Examples
-
-```bash
-# Create/update user with bcrypt (recommended)
-htpasswd -B ./auth/passwords newuser
-
-# Create/update user with MD5 (compatible)
-htpasswd -m /etc/hackrf/passwords newuser
-
-# For system service with custom location
-sudo mkdir -p /etc/hackrf
-sudo htpasswd -c -B /etc/hackrf/passwords admin
-# Update config.ini: HTTP_AUTH_CREDENTIALS=/etc/hackrf/passwords
-
-# Verify password
-htpasswd -v /path/to/passwords admin
-
-# Delete user
-htpasswd -D /path/to/passwords olduser
-```
 
 ### Security Considerations
 
@@ -559,50 +497,6 @@ lsusb | grep HackRF
 echo '{"capcode": 1122334, "message": "test"}' | jq .
 ```
 
-## Installation Management
-
-### System Installation
-
-```bash
-# Full installation with service
-sudo make install
-
-# Check installation
-which hackrf_http_server
-systemctl list-unit-files | grep hackrf
-
-# View service configuration
-sudo systemctl cat hackrf-http-server
-```
-
-### Uninstallation
-
-```bash
-# Remove application and service
-sudo make uninstall
-
-# Complete removal (including user data)
-sudo rm -rf /var/lib/hackrf-server
-sudo userdel hackrf
-sudo groupdel hackrf
-```
-
-### Update Installation
-
-```bash
-# Stop service
-sudo make stop-service
-
-# Build new version
-make clean && make
-
-# Install update
-sudo make install
-
-# Start service
-sudo make start-service
-```
-
 ## Integration Examples
 
 ### Python Client Example
@@ -704,49 +598,21 @@ send_alert 911911 "Emergency: Fire alarm activated" 931937500
 send_alert 99999 "Backup completed successfully"
 ```
 
-## Performance Tuning
-
-### Optimizing for Different Use Cases
-
-**High Throughput Setup:**
-```ini
-# config.ini for high message volume
-SAMPLE_RATE=8000000
-BITRATE=3200
-AMPLITUDE=100
-TX_GAIN=25
-```
-
-**Low Power Setup:**
-```ini
-# config.ini for battery/low power operation
-AMPLITUDE=64
-TX_GAIN=5
-FREQ_DEV=1200
-```
-
-**Development/Testing Setup:**
-```ini
-# config.ini for safe testing
-BIND_ADDRESS=127.0.0.1
-SERIAL_LISTEN_PORT=0
-HTTP_LISTEN_PORT=16180
-# HTTP only, local access, no RF transmission with --debug
-```
-
-### System Requirements
-
-- **Minimum**: 1GB RAM, 1 CPU core, USB 2.0
-- **Recommended**: 2GB RAM, 2 CPU cores, USB 3.0
-- **High Throughput**: 4GB RAM, 4 CPU cores, dedicated USB controller
-
 ### Frequency Planning
 
 Common paging frequencies and considerations:
 
-- **929-932 MHz**: Most common paging band in North America
-- **152 MHz**: VHF paging (longer range, lower data rates)
-- **454 MHz**: UHF paging (good compromise)
+Most Common FLEX Frequencies
+```
+| Frequency (MHz) | Use Case                  | Example Network         |
+| --------------- | ------------------------- | ----------------------- |
+| **929.6625**    | Nationwide paging         | American Messaging      |
+| **929.9375**    | FLEX (popular)            | SkyTel FLEX             |
+| **931.4375**    | FLEX / 2-way paging       | Motorola infrastructure |
+| **931.8875**    | FLEX (high capacity)      | Commercial pagers       |
+| **931.9375**    | FLEX (customized systems) | Private / hospital use  |
+| **940.0+**      | Response / return channel | For 2-way FLEX systems  |
+```
 - **931.9375 MHz**: Default frequency used by this server
 
 **Important**: Always check local regulations and ensure you have proper licensing before transmitting on any frequency.
