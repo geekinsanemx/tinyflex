@@ -1,6 +1,6 @@
 *.o
 *.py
-!demos/grafana_flexserver/*.py
+!demos/hackrf_http_server/examples/hackrf-grafana-webhook/*.py
 *~
 demos/encode_file
 demos/send_ttgo
