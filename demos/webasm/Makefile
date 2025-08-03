@@ -5,7 +5,7 @@ CC_JS   = emcc
 CFLAGS += -Wall -Wextra -O3
 CFLAGS_JS += $(CFLAGS)
 CFLAGS_JS += -s EXPORTED_FUNCTIONS='["_encode_flex_message_str", "_get_encoded_data", "_get_encoded_size", "_get_last_error", "_malloc", "_free"]'
-CFLAGS_JS += -s EXPORTED_RUNTIME_METHODS='["ccall", "cwrap"]'
+CFLAGS_JS += -s EXPORTED_RUNTIME_METHODS='["ccall", "cwrap", "HEAPU8"]'
 CFLAGS_JS += -I$(CURDIR)/../..
 
 all: flex_encoder.js

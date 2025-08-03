@@ -302,14 +302,11 @@
 		let encodedData = null;
 		let encodedSize = 0;
 
-		let wasmReady = false;
 		
 		var Module = {
 			onRuntimeInitialized: function() {
-				console.log('WebAssembly module loaded and runtime initialized');
-				wasmReady = true;
+				console.log('WebAssembly module loaded');
 				document.getElementById('encodeBtn').disabled = false;
-				document.getElementById('encodeBtn').textContent = 'Encode Message';
 			},
 		};
 
@@ -487,13 +484,6 @@
 		}
 
 		function encodeMessage() {
-			/* Check if WebAssembly module is ready */
-			if (!wasmReady || !Module || !Module.ccall || !Module.HEAPU8) {
-				showStatus('Error: WebAssembly module not ready yet. Please wait...', true);
-				console.log('WASM ready:', wasmReady, 'Module:', !!Module, 'ccall:', !!Module?.ccall, 'HEAPU8:', !!Module?.HEAPU8);
-				return;
-			}
-			
 			const capcode = document.getElementById('capcode').value;
 			const message = document.getElementById('message').value;
 			const mailDrop = document.getElementById('mailDrop').checked ? 1 : 0;
@@ -634,7 +624,6 @@
 
 		/* Initialize - disable button until WASM is ready */
 		document.getElementById('encodeBtn').disabled = true;
-		document.getElementById('encodeBtn').textContent = 'Loading WebAssembly...';
 	</script>
 </body>
 </html>
