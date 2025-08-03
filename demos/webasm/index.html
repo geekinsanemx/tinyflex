@@ -302,10 +302,14 @@
 		let encodedData = null;
 		let encodedSize = 0;
 
+		let wasmReady = false;
+		
 		var Module = {
 			onRuntimeInitialized: function() {
-				console.log('WebAssembly module loaded');
+				console.log('WebAssembly module loaded and runtime initialized');
+				wasmReady = true;
 				document.getElementById('encodeBtn').disabled = false;
+				document.getElementById('encodeBtn').textContent = 'Encode Message';
 			},
 		};
 
@@ -483,6 +487,13 @@
 		}
 
 		function encodeMessage() {
+			/* Check if WebAssembly module is ready */
+			if (!wasmReady || !Module || !Module.ccall || !Module.HEAPU8) {
+				showStatus('Error: WebAssembly module not ready yet. Please wait...', true);
+				console.log('WASM ready:', wasmReady, 'Module:', !!Module, 'ccall:', !!Module?.ccall, 'HEAPU8:', !!Module?.HEAPU8);
+				return;
+			}
+			
 			const capcode = document.getElementById('capcode').value;
 			const message = document.getElementById('message').value;
 			const mailDrop = document.getElementById('mailDrop').checked ? 1 : 0;
@@ -527,8 +538,12 @@
 					return;
 				}
 
-				/* Get encoded data. */
+				/* Get encoded data with additional safety checks */
 				const dataPtr = Module.ccall('get_encoded_data', 'number', [], []);
+				if (!dataPtr || !Module.HEAPU8 || !Module.HEAPU8.buffer) {
+					throw new Error('Failed to get encoded data or WASM memory not available');
+				}
+				
 				encodedData = new Uint8Array(Module.HEAPU8.buffer, dataPtr, encodedSize);
 				
 				/* Make a copy since the buffer might be reused. */
@@ -617,8 +632,9 @@
 			showStatus('Binary file downloaded successfully!');
 		}
 
-		/* Initialize. */
+		/* Initialize - disable button until WASM is ready */
 		document.getElementById('encodeBtn').disabled = true;
+		document.getElementById('encodeBtn').textContent = 'Loading WebAssembly...';
 	</script>
 </body>
 </html>
