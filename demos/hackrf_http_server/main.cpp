@@ -68,16 +68,16 @@ void print_help() {
     std::cout << "  Authentication: HTTP Basic Auth (required)\n";
     std::cout << "  Content-Type: application/json\n\n";
 
-    std::cout << "  JSON Format (all fields optional except message):\n";
+    std::cout << "  JSON Format (capcode and message are REQUIRED, frequency is optional):\n";
     std::cout << "  {\n";
-    std::cout << "    \"capcode\": 1122334,      // optional, default: 37137\n";
-    std::cout << "    \"message\": \"Hello World\", // required\n";
-    std::cout << "    \"frequency\": 925516000   // optional, uses DEFAULT_FREQUENCY if omitted\n";
+    std::cout << "    \"capcode\": 1122334,      // REQUIRED: target capcode\n";
+    std::cout << "    \"message\": \"Hello World\", // REQUIRED: message text\n";
+    std::cout << "    \"frequency\": 925516000   // OPTIONAL: uses DEFAULT_FREQUENCY if omitted\n";
     std::cout << "  }\n\n";
 
     std::cout << "  HTTP Response Codes (AWS Lambda Compatible):\n";
     std::cout << "    200 OK                - Message transmitted successfully\n";
-    std::cout << "    400 Bad Request       - Invalid JSON or missing required fields\n";
+    std::cout << "    400 Bad Request       - Invalid JSON or missing required fields (capcode/message)\n";
     std::cout << "    401 Unauthorized      - Authentication required/failed\n";
     std::cout << "    405 Method Not Allowed - Only POST requests supported\n";
     std::cout << "    500 Internal Error    - Processing/transmission failure\n\n";
@@ -87,10 +87,10 @@ void print_help() {
     std::cout << "    curl -X POST http://localhost:16180/ -u admin:passw0rd \\\n";
     std::cout << "      -H 'Content-Type: application/json' \\\n";
     std::cout << "      -d '{\"capcode\":1122334,\"message\":\"Test\",\"frequency\":925516000}'\n\n";
-    std::cout << "    # Minimal message (uses defaults)\n";
+    std::cout << "    # Required fields only (uses DEFAULT_FREQUENCY)\n";
     std::cout << "    curl -X POST http://localhost:16180/ -u admin:passw0rd \\\n";
     std::cout << "      -H 'Content-Type: application/json' \\\n";
-    std::cout << "      -d '{\"message\":\"Using defaults\"}'\n\n";
+    std::cout << "      -d '{\"capcode\":1122334,\"message\":\"Using default frequency\"}'\n\n";
 
     std::cout << "AUTHENTICATION:\n";
     std::cout << "  HTTP requests require basic auth. Credentials in ./passwords (htpasswd format).\n";
@@ -627,9 +627,24 @@ void handle_http_client(int client_fd, const std::map<std::string, std::string>&
         return;
     }
 
+    // Validate required fields: capcode and message are MANDATORY
+    if (json_msg.capcode == 0) {
+        send_http_response(client_fd, 400, "Bad Request",
+                          "{\"error\":\"Missing required field: capcode must be specified\",\"code\":400}",
+                          "application/json", verbose_mode);
+        return;
+    }
+
+    if (json_msg.message.empty()) {
+        send_http_response(client_fd, 400, "Bad Request",
+                          "{\"error\":\"Missing required field: message must be specified\",\"code\":400}",
+                          "application/json", verbose_mode);
+        return;
+    }
+
     log_json_processing(json_msg, config.DEFAULT_FREQUENCY, verbose_mode);
 
-    // Use default frequency if not provided
+    // Use default frequency if not provided (frequency is optional)
     uint64_t frequency = json_msg.frequency > 0 ? json_msg.frequency : config.DEFAULT_FREQUENCY;
 
     if (process_message(json_msg.capcode, json_msg.message, frequency, conn_state, config, debug_mode, verbose_mode)) {
