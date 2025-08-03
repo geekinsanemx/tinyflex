@@ -24,8 +24,10 @@ sudo chmod +x /opt/hackrf-grafana-webhook/hackrf-grafana-webhook.py
 ```
 
 # Create service user
+```bash
 sudo useradd -r -s /usr/sbin/nologin hackrf
 sudo chown -R hackrf:hackrf /opt/hackrf-grafana-webhook
+```
 
 ### 3. Configuration
 Create configuration directory and generate default config:
@@ -95,6 +97,7 @@ Options:
   4. Internal defaults
 
 ## Environment Variables:
+```
   HACKRF_SERVER_URL    HackRF server URL
   HACKRF_USERNAME      HackRF server username
   HACKRF_PASSWORD      HackRF server password
@@ -107,6 +110,7 @@ Options:
   SSL_KEY_PATH         SSL private key path
   LOG_LEVEL            Logging level (DEBUG, INFO, WARNING, ERROR)
   DEBUG_MODE           Enable debug mode (True/False)
+```
 
 ## Webhook Endpoints
   POST /api/v1/alerts - Main webhook endpoint
