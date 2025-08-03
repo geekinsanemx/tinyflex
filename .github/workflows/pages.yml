@@ -6,11 +6,6 @@ on:
     paths:
       - tinyflex.h
       - tinyflex/demos/webasm/**
-    paths-ignore:
-      - .gitignore
-      - README.md
-      - UNLICENSE
-      - tinyflex/demos/!(webasm)/**
 
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
