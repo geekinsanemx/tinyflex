@@ -5,7 +5,8 @@ on:
       - master
     paths:
       - tinyflex.h
-      - tinyflex/demos/webasm/**
+      - demos/webasm/**
+      - .github/workflows/pages.yml
 
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
@@ -44,19 +45,22 @@ jobs:
           which emcc
 
       - name: Build WebAssembly module
-        working-directory: tinyflex/demos/webasm
+        working-directory: demos/webasm
         run: |
           echo "Building tinyflex WebAssembly module..."
+          pwd
+          ls -la
           make clean
           make
           ls -la *.wasm *.js *.html
 
       - name: Prepare deployment directory
         run: |
+          pwd
           mkdir -p deploy
-          cp tinyflex/demos/webasm/index.html deploy/
-          cp tinyflex/demos/webasm/flex_encoder.js deploy/
-          cp tinyflex/demos/webasm/flex_encoder.wasm deploy/
+          cp demos/webasm/index.html deploy/
+          cp demos/webasm/flex_encoder.js deploy/
+          cp demos/webasm/flex_encoder.wasm deploy/
           echo "Contents of deploy directory:"
           ls -la deploy/
 
