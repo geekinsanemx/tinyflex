@@ -17,27 +17,65 @@ A dual-protocol HTTP/TCP server for transmitting FLEX paging messages using TTGO
 ### TTGO ESP32 + SX127x Module
 - TTGO LoRa32 V1/V2
 - TTGO T-Beam
-- Heltec WiFi LoRa 32
-- Any ESP32 + SX127x compatible board
 
-### Firmware
-The TTGO module must be flashed with the **ttgo-fsk-tx** firmware:
+### Firmware Dependency
+The TTGO module **must** be flashed with the **ttgo-fsk-tx** firmware:
 - Repository: https://github.com/rlaneth/ttgo-fsk-tx/
-- Supports FLEX protocol transmission
-- Serial command interface
+- **This is a required dependency** - the server will not work without it
+- Supports FLEX protocol transmission over FSK modulation
+- Provides serial command interface for frequency/power control
 
-## Quick Start
+## Prerequisites
 
-### 1. Build the Server
+### 1. TTGO Firmware Installation
+
+**CRITICAL**: Before using this server, you must flash your TTGO device with the required firmware.
 
 ```bash
+# Clone the ttgo-fsk-tx firmware repository
+git clone https://github.com/rlaneth/ttgo-fsk-tx.git
+cd ttgo-fsk-tx
+
+# Follow the firmware installation instructions in that repository
+# This typically involves:
+# 1. Installing PlatformIO or Arduino IDE
+# 2. Configuring for your specific TTGO board type
+# 3. Compiling and uploading the firmware
+# 4. Testing the serial interface
+
+# Verify firmware installation
+# Connect to your TTGO device and test:
+screen /dev/ttyACM0 115200
+# Type: f 916.0000
+# Expected response: CONSOLE:0
+# Exit: Ctrl+A, K
+```
+
+**Supported TTGO boards** (verified with ttgo-fsk-tx firmware):
+- TTGO LoRa32 V1/V2
+- TTGO T-Beam  
+- LILYGO TTGO LoRa32 V2.1_1.6
+
+**Note**: The ttgo-fsk-tx firmware is specifically designed for "TTGO LoRa32-OLED v2.1.6 board". Other ESP32 + SX127x boards may work but are not officially verified. If you have a different board, you may need to modify the firmware or use alternative ESP32 + SX127x compatible firmware.
+
+### 2. Build Dependencies
+
+Install the required build tools:
+
+```bash
+# Ubuntu/Debian
+sudo apt update
+sudo apt install build-essential libcrypt-dev
+
 # Check dependencies
 make check-deps
+```
 
-# Build the server
+```bash
+# Build the server (dependencies should already be installed)
 make
 
-# Test TTGO connection (optional)
+# Test TTGO connection (verify firmware is working)
 make test-ttgo
 ```
 
