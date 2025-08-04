@@ -1,5 +1,6 @@
 *.o
 *.py
+!demos/hackrf-grafana-webhook/*.py
 *~
 demos/encode_file
 demos/send_ttgo
