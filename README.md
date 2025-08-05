@@ -59,10 +59,10 @@ available under `demos/gnuradio`.
 
 [ttgo-fsk-tx]: https://github.com/rlaneth/ttgo-fsk-tx/
 
-## Companion programs
+## Companion demos
 The `demo` directory contains companion programs to facilitate library usage:
-`encode_file` and `send_ttgo`, plus a `gnuradio` subdirectory with transmission
-examples.
+`encode_file`, `send_ttgo`, `hackrf_tcp_server`, and `webasm`, plus a `gnuradio` 
+subdirectory with transmission examples.
 
 ### `encode_file`
 Designed for transmission tools that work with file input and/or communicate
@@ -135,6 +135,34 @@ Normal mode:
 
 ```
 
+### `hackrf_tcp_server`
+`hackrf_tcp_server` is a C++ server that provides real-time FLEX transmission
+using HackRF SDR devices. It accepts messages over TCP and immediately transmits
+them without requiring file intermediates.
+
+```bash
+cd demos/hackrf_tcp_server
+make
+./hackrf_tcp_server
+
+# Send a simple message
+echo '001122334|Hello World|925516000' | nc localhost 16175
+```
+
+The server listens for TCP connections and expects messages in the format:
+`CAPCODE|MESSAGE|FREQUENCY`.
+
+### WebAssembly Demo
+The `demos/webasm` directory contains a WebAssembly port of tinyflex that
+serves as an online FLEX encoder, without requiring extra tooling.
+
+```bash
+cd demos/webasm
+make                    # Requires Emscripten
+```
+
+Link: https://blog.theldus.moe/tinyflex/
+
 ### GNU Radio
 The `demos/gnuradio` directory contains a flowchart demonstrating how to
 transmit a single file encoded by `encode_file` using a HackRF (and can be
@@ -154,6 +182,17 @@ make
 cd gnuradio
 gnuradio-companion hackrf_file_tx_demo.grc
 ```
+
+## Projects using tinyflex
+
+### [Flex HTTP Server]
+An enhanced HTTP REST server that extends the basic HackRF TCP server
+functionality, enabling Grafana alerts to be sent directly to
+pagers, whether via HackRF or TTGO Lora32. Features dual protocol support
+(TCP and HTTP JSON API), authentication,  configuration management, and a
+dedicated Grafana webhook service for seamless alert forwarding.
+
+[Flex HTTP Server]: https://github.com/geekinsanemx/flex-http-server
 
 ## Acknowledgements
 This project came from discussions and experiments on paging that I have worked
