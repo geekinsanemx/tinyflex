@@ -198,7 +198,7 @@ dedicated Grafana webhook service for seamless alert forwarding.
 A command-line FSK transmitter application that sends FLEX pager messages
 over serial using AT commands.
 Originally based on [tinyflex](https://github.com/Theldus/tinyflex),
-and [ttgo_fsk_tx](https://github.com/rlaneth/ttgo-fsk-tx)
+and [ttgo-fsk-tx](https://github.com/rlaneth/ttgo-fsk-tx)
 adapted for Heltec WiFi Lora32 v3 boards with chip SX1262 LoRa32
 
 [flex-fsk-tx]: https://github.com/geekinsanemx/flex-fsk-tx
